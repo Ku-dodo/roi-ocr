@@ -34,6 +34,5 @@ $DistributionRoot = ".\dist\OCRTool"
 Copy-Item -LiteralPath ".\licenses" -Destination "$DistributionRoot\licenses" -Recurse -Force
 Copy-Item -LiteralPath ".\README.md" -Destination "$DistributionRoot\README.md" -Force
 Copy-Item -LiteralPath ".\THIRD_PARTY_NOTICES.md" -Destination "$DistributionRoot\THIRD_PARTY_NOTICES.md" -Force
-Copy-Item -LiteralPath ".\LICENSE_COMPLIANCE.md" -Destination "$DistributionRoot\LICENSE_COMPLIANCE.md" -Force
 
 Write-Host "Build complete: $DistributionRoot\OCRTool.exe"

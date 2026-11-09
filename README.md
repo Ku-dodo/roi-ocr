@@ -63,6 +63,6 @@ src/ocr_app/
 
 ## 라이선스
 
-현재 구성요소별 고지는 `THIRD_PARTY_NOTICES.md`, 사내·외 배포 전 검토 항목은
-`LICENSE_COMPLIANCE.md`에 정리되어 있습니다. 패키지별 원문은 `licenses/`에서
-확인할 수 있습니다. OCR 모델 파일은 배포하지 않고 첫 사용 시 자동 다운로드합니다.
+구성요소별 고지는 `THIRD_PARTY_NOTICES.md`, 패키지별 라이선스 원문은
+`licenses/`에서 확인할 수 있습니다. OCR 모델 파일은 배포하지 않고 첫 사용 시
+자동 다운로드합니다.

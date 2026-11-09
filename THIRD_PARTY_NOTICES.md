@@ -47,18 +47,5 @@ GPL 조건을 다시 검토해야 합니다.
 ## Qt LGPLv3 배포
 
 현재 `onedir` 결과물은 Qt DLL을 `_internal/` 아래의 독립 파일로 동적 로드합니다.
-폐쇄형 애플리케이션을 LGPLv3 경로로 배포하려면 적어도 다음을 충족해야 합니다.
-
-1. Qt/PySide6/Shiboken6 사용 사실과 LGPLv3 적용 사실을 명확히 고지합니다.
-2. `licenses/manual/LGPL-3.0.txt`와 `GPL-3.0.txt`를 배포합니다.
-3. 사용한 Qt/PySide6/Shiboken6의 완전한 대응 소스를 회사가 통제하는 위치에서
-   제공하거나, 유효한 서면 제공 방식을 마련합니다. Qt 공식 사이트 링크만 두는 것은
-   충분하지 않을 수 있습니다.
-4. 수령자가 수정한 호환 Qt 라이브러리로 DLL을 교체해 프로그램을 실행할 수 있게 하고,
-   이에 필요한 설치 지침을 제공합니다.
-5. EULA나 사내 보안 규정이 LGPL 구성요소의 수정·디버깅에 필요한 역공학 권리를
-   제한하지 않도록 합니다.
-6. GPL 전용 Qt 모듈을 추가하지 않습니다. 현재 사용 모듈은 Core, Gui, Widgets,
-   Network, Svg이며 배포 전에 버전별 라이선스를 다시 확인합니다.
-
-구체적인 검토 상태와 배포 전 조치는 `LICENSE_COMPLIANCE.md`를 참조하십시오.
+Qt/PySide6/Shiboken6에는 LGPLv3가 적용되며, 영문 전문과 고지는
+`licenses/manual/`에 포함되어 있습니다.
