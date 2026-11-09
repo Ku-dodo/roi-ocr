@@ -1,0 +1,15 @@
+.venv/
+.venv-broken-310/
+.venv313/
+.idea/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+build/
+dist/
+result/
+models/*.pth
+models/*.zip
+licenses/generated/
+python-*-amd64.exe
+python-install.log
