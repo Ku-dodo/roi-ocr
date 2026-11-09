@@ -4,13 +4,13 @@
 
 ## 개발 환경 준비
 
-Python 3.13 환경에서 검증했습니다. 기존 `.venv`가 다른 Python 경로를 가리키면 새 가상환경을 만든 뒤 패키지를 설치합니다. CPU 전용 PyTorch를 먼저 설치하여 CUDA 라이브러리가 배포물에 들어가지 않도록 합니다.
+Python 3.10 환경에서 검증했습니다. CPU 전용 PyTorch를 먼저 설치하여 CUDA 라이브러리가 배포물에 들어가지 않도록 합니다.
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+python -m venv .venv-release
+.\.venv-release\Scripts\python.exe -m pip install --upgrade pip
+.\.venv-release\Scripts\python.exe -m pip install torch==2.14.1+cpu torchvision==0.29.2+cpu --index-url https://download.pytorch.org/whl/cpu
+.\.venv-release\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
 선택한 언어 모델이 없으면 첫 OCR 실행 시 `models/` 폴더로 자동 다운로드합니다. 배포본에도 모델 파일은 포함하지 않으므로 처음 사용할 때 인터넷 연결이 필요합니다.
@@ -18,7 +18,7 @@ python -m venv .venv
 ## 실행
 
 ```powershell
-.\.venv\Scripts\python.exe .\main.py
+.\.venv-release\Scripts\python.exe .\main.py
 ```
 
 1. `이미지 추가`로 여러 파일을 등록합니다.
@@ -41,13 +41,32 @@ Static ROI는 `OCR 실행` 시 등록된 모든 이미지에 일괄 적용됩니
 .\build.ps1
 ```
 
-완성된 진입점은 `dist/OCRTool/OCRTool.exe`입니다. `_internal`, `licenses` 폴더와 함께 배포해야 합니다. `models` 폴더는 첫 OCR 실행 시 자동으로 생성됩니다.
+완성된 진입점은 `dist/OCRTool/OCRTool.exe`입니다. GitHub Release에 올릴 ZIP과
+SHA-256 파일은 `dist/OCRTool-0.1.0-windows-x64.zip` 및 `.sha256`으로 생성됩니다.
+버전을 변경하려면 `build.ps1 -Version 0.2.0`처럼 실행합니다. `models` 폴더는 첫 OCR
+실행 시 자동으로 생성됩니다.
 
 배포본의 OCR 파이프라인을 화면 없이 점검하려면 다음 진단 명령을 사용할 수 있습니다. 성공하면 배포 폴더의 `result/`에 CSV가 생성됩니다.
 
 ```powershell
 .\dist\OCRTool\OCRTool.exe --smoke-ocr ".\sample.png"
 ```
+
+## GitHub 공개와 Release
+
+저장소에는 소스 코드만 커밋합니다. `.gitignore`에 `dist/`, `build/`, 가상환경,
+OCR 모델 및 결과 파일이 포함되어 있습니다.
+
+버전 태그를 올리면 GitHub Actions가 테스트와 Windows 빌드를 실행하고 ZIP과
+SHA-256 파일이 첨부된 GitHub Release를 자동으로 생성합니다.
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+태그의 `v` 뒤 값은 `build.ps1`에 전달되는 배포 버전입니다. 같은 태그는 다시 사용할
+수 없으므로 다음 배포에서는 `v0.1.1`, `v0.2.0`처럼 올립니다.
 
 ## 구조
 
@@ -62,6 +81,8 @@ src/ocr_app/
 `main.py`는 구현 로직을 포함하지 않고 애플리케이션을 조립하고 시작하는 진입점으로만 사용합니다.
 
 ## 라이선스
+
+이 프로젝트의 소스 코드는 Apache License 2.0으로 배포됩니다.
 
 구성요소별 고지는 `THIRD_PARTY_NOTICES.md`, 패키지별 라이선스 원문은
 `licenses/`에서 확인할 수 있습니다. OCR 모델 파일은 배포하지 않고 첫 사용 시

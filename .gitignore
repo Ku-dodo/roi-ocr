@@ -1,4 +1,5 @@
 .venv/
+.venv-release/
 .venv-broken-310/
 .venv313/
 .idea/
