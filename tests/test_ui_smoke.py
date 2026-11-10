@@ -14,7 +14,7 @@ SOURCE_ROOT = PROJECT_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from PySide6.QtCore import QEvent, QMimeData, QPoint, QPointF, QUrl, Qt
+from PySide6.QtCore import QEvent, QMimeData, QPoint, QPointF, QSettings, QUrl, Qt
 from PySide6.QtGui import QDropEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QCompleter, QMessageBox
@@ -28,6 +28,34 @@ class MainWindowSmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.application = QApplication.instance() or QApplication([])
+
+    def test_csv_extension_setting_defaults_on_persists_and_reaches_worker(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            settings_path = str(Path(temporary_directory) / "settings.ini")
+            with patch(
+                "ocr_app.presentation.main_window.QSettings",
+                side_effect=lambda: QSettings(settings_path, QSettings.Format.IniFormat),
+            ):
+                window = MainWindow()
+                self.addCleanup(window.close)
+                self.assertTrue(window._include_extension_checkbox.isChecked())
+                for include in (False, True):
+                    window._include_extension_checkbox.setChecked(include)
+                    window._settings.sync()
+                    restored = MainWindow()
+                    self.addCleanup(restored.close)
+                    self.assertEqual(include, restored._include_extension_checkbox.isChecked())
+                    restored._model.add_paths([Path("sample.png")])
+                    restored._model_download_checkbox.setChecked(True)
+                    restored._thread_pool = Mock()
+                    with patch(
+                        "ocr_app.presentation.main_window.model_directory",
+                        return_value=Path(temporary_directory),
+                    ):
+                        restored._run_ocr()
+                    self.assertEqual(include, restored._worker._include_file_extension)
+                    self.assertFalse(restored._include_extension_checkbox.isEnabled())
+                    restored.close()
 
     def test_main_window_can_be_constructed(self) -> None:
         window = MainWindow()
@@ -79,6 +107,7 @@ class MainWindowSmokeTests(unittest.TestCase):
         self.assertTrue(popup.isVisible())
         for control in (
             window._model_download_checkbox, window._scale_combo, window._preprocess_checkbox,
+            window._include_extension_checkbox,
         ):
             self.assertTrue(popup.isAncestorOf(control))
         QApplication.sendEvent(window._settings_button, QEvent(QEvent.Type.Leave))
@@ -139,6 +168,7 @@ class MainWindowSmokeTests(unittest.TestCase):
         self.assertFalse(window._settings_popup.isVisible())
         controls = (
             window._model_download_checkbox, window._scale_combo, window._preprocess_checkbox,
+            window._include_extension_checkbox,
         )
         self.assertTrue(all(not control.isEnabled() for control in controls))
         window._settings_popup.show_panel()
