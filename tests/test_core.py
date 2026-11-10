@@ -55,13 +55,16 @@ class DomainTests(unittest.TestCase):
         self.assertEqual(("ko", "en"), reader_languages("ko"))
         self.assertEqual(("en",), reader_languages("en"))
 
-    def test_one_or_positive_even_scale_is_allowed(self) -> None:
-        for valid in (1, 2, 4, 6, 8):
+    def test_preprocessing_scale_is_limited_to_one_two_or_four(self) -> None:
+        for valid in (1, 2, 4):
             validate_scale_factor(valid)
+            self.assertEqual(valid, ImageItem(Path("sample.png"), scale_factor=valid).scale_factor)
 
-        for invalid in (-2, 0, 3, 5):
+        for invalid in (-2, 0, 3, 5, 6, 8, 100):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 validate_scale_factor(invalid)
+            with self.subTest(image_scale=invalid), self.assertRaises(ValueError):
+                ImageItem(Path("sample.png"), scale_factor=invalid)
 
     def test_roi_requires_positive_size(self) -> None:
         with self.assertRaises(ValueError):

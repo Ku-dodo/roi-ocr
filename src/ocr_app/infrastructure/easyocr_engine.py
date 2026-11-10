@@ -13,7 +13,7 @@ class EasyOcrEngine:
         model_directory: Path,
         languages: Sequence[str] = ("ko", "en"),
         use_gpu: bool = False,
-        allow_download: bool = True,
+        allow_download: bool = False,
     ) -> None:
         import easyocr
 

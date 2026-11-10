@@ -23,16 +23,21 @@ class EasyOcrEngineTests(unittest.TestCase):
             ([], "  첫 번째  ", 0.8),
             ([], "두   번째", 0.6),
         ]
-        easyocr_module = SimpleNamespace(Reader=Mock(return_value=reader))
+        reader_type = Mock(return_value=reader)
+        easyocr_module = SimpleNamespace(Reader=reader_type)
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             with patch.dict(sys.modules, {"easyocr": easyocr_module}):
-                engine = EasyOcrEngine(
-                    Path(temporary_directory),
-                    allow_download=False,
-                )
+                engine = EasyOcrEngine(Path(temporary_directory))
                 result = engine.recognize(object())
 
+        reader_type.assert_called_once_with(
+            ["ko", "en"],
+            gpu=False,
+            model_storage_directory=temporary_directory,
+            download_enabled=False,
+            verbose=False,
+        )
         reader.readtext.assert_called_once_with(
             unittest.mock.ANY,
             detail=1,

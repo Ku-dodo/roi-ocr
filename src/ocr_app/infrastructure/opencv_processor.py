@@ -20,14 +20,13 @@ class OpenCvImageProcessor:
         import cv2
 
         validate_scale_factor(scale_factor)
-        image = self._image_loader.load(path)
-        cropped = self._crop(image, roi)
+        image = self._crop(self._image_loader.load(path), roi)
         if self._screenshot_preprocessing:
-            return self._preprocess_screenshot(cropped, scale_factor)
+            image = self._preprocess_screenshot(image)
         if scale_factor == 1:
-            return cropped
+            return image
         return cv2.resize(
-            cropped,
+            image,
             None,
             fx=scale_factor,
             fy=scale_factor,
@@ -35,7 +34,7 @@ class OpenCvImageProcessor:
         )
 
     @staticmethod
-    def _preprocess_screenshot(image: Any, scale_factor: int) -> Any:
+    def _preprocess_screenshot(image: Any) -> Any:
         import cv2
 
         if len(image.shape) == 2:
@@ -54,15 +53,7 @@ class OpenCvImageProcessor:
             255,
             cv2.THRESH_BINARY | cv2.THRESH_OTSU,
         )
-        if scale_factor == 1:
-            return binary
-        return cv2.resize(
-            binary,
-            None,
-            fx=scale_factor,
-            fy=scale_factor,
-            interpolation=cv2.INTER_NEAREST,
-        )
+        return binary
 
     @staticmethod
     def _crop(image: Any, roi: Roi | None) -> Any:

@@ -5,6 +5,9 @@ from enum import Enum
 from pathlib import Path
 
 
+SUPPORTED_SCALE_FACTORS = (1, 2, 4)
+
+
 class ImageStatus(str, Enum):
     READY = "대기"
     PROCESSING = "처리 중"
@@ -53,5 +56,5 @@ class OcrResult:
 
 
 def validate_scale_factor(scale_factor: int) -> None:
-    if scale_factor != 1 and (scale_factor <= 0 or scale_factor % 2 != 0):
-        raise ValueError("확대 배율은 1 또는 양의 짝수여야 합니다.")
+    if scale_factor not in SUPPORTED_SCALE_FACTORS:
+        raise ValueError("전처리 확대 배율은 1배, 2배, 4배만 사용할 수 있습니다. (최대 4배)")

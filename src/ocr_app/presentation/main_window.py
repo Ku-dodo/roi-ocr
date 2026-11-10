@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterable
 
 from PySide6.QtCore import QModelIndex, QSettings, QThreadPool, Qt
 from PySide6.QtWidgets import (
@@ -19,7 +20,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSplitter,
-    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -31,11 +31,13 @@ from ocr_app.domain.languages import (
     is_language_model_installed,
     reader_languages,
 )
-from ocr_app.domain.models import ImageItem, ImageStatus, Roi
+from ocr_app.domain.models import SUPPORTED_SCALE_FACTORS, ImageItem, ImageStatus, Roi
 from ocr_app.infrastructure.paths import model_directory, result_directory
+from ocr_app.presentation.image_drop_table import ImageDropTable
 from ocr_app.presentation.image_preview import ImagePreview
 from ocr_app.presentation.image_table_model import ImageTableModel
 from ocr_app.presentation.searchable_combo_box import SearchableComboBox
+from ocr_app.presentation.settings_popover import SettingsPopover
 from ocr_app.presentation.worker import OcrWorker
 
 
@@ -92,11 +94,36 @@ class MainWindow(QMainWindow):
         )
         toolbar.addWidget(self._language_combo)
 
-        toolbar.addWidget(QLabel("선택 배율"))
+        self._settings_button = QPushButton("⚙")
+        self._settings_button.setObjectName("settingsButton")
+        self._settings_button.setAccessibleName("OCR 설정")
+        self._settings_button.setFixedSize(36, 34)
+        self._settings_popup = SettingsPopover(self._settings_button, self)
+        settings_layout = QVBoxLayout(self._settings_popup)
+        settings_layout.setContentsMargins(16, 14, 16, 14)
+        settings_layout.setSpacing(12)
+        title = QLabel("OCR 설정")
+        title.setObjectName("settingsTitle")
+        settings_layout.addWidget(title)
+
+        self._model_download_checkbox = QCheckBox("모델 자동 다운로드")
+        self._model_download_checkbox.setToolTip(
+            "필요한 EasyOCR 모델이 없을 때 인터넷에서 자동으로 다운로드합니다."
+        )
+        settings_layout.addWidget(self._model_download_checkbox)
+
+        scale_row = QHBoxLayout()
+        scale_row.addWidget(QLabel("선택 이미지 배율"))
+        scale_row.addStretch(1)
         self._scale_combo = QComboBox()
-        for scale in (1, 2, 4, 6, 8):
+        for scale in SUPPORTED_SCALE_FACTORS:
             self._scale_combo.addItem(f"{scale}x", scale)
-        toolbar.addWidget(self._scale_combo)
+        self._scale_combo.setToolTip("OCR 전처리 확대 배율입니다. 최대 4배까지 선택할 수 있습니다.")
+        scale_row.addWidget(self._scale_combo)
+        settings_layout.addLayout(scale_row)
+        scale_hint = QLabel("선택한 이미지에 적용됩니다. 여러 개 선택 가능")
+        scale_hint.setObjectName("mutedLabel")
+        settings_layout.addWidget(scale_hint)
 
         self._preprocess_checkbox = QCheckBox()
         self._preprocess_checkbox.setChecked(
@@ -108,7 +135,8 @@ class MainWindow(QMainWindow):
         self._update_preprocess_checkbox_text(
             self._preprocess_checkbox.isChecked()
         )
-        toolbar.addWidget(self._preprocess_checkbox)
+        settings_layout.addWidget(self._preprocess_checkbox)
+        toolbar.addWidget(self._settings_button)
 
         self._clear_roi_button = QPushButton("Static ROI 해제")
         self._run_button = QPushButton("OCR 실행")
@@ -124,7 +152,10 @@ class MainWindow(QMainWindow):
         file_group = QGroupBox("등록된 파일")
         file_layout = QVBoxLayout(file_group)
         file_layout.setContentsMargins(10, 16, 10, 10)
-        self._table = QTableView()
+        drop_hint = QLabel("이미지 파일을 이 영역으로 드래그해 추가할 수 있습니다.")
+        drop_hint.setObjectName("mutedLabel")
+        file_layout.addWidget(drop_hint)
+        self._table = ImageDropTable()
         self._table.setModel(self._model)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -185,12 +216,14 @@ class MainWindow(QMainWindow):
         self._add_button.clicked.connect(self._add_images)
         self._remove_button.clicked.connect(self._remove_selected)
         self._clear_button.clicked.connect(self._clear_all)
-        self._clear_roi_button.clicked.connect(lambda: self._preview.clear_roi())
+        self._clear_roi_button.clicked.connect(self._preview.clear_roi)
         self._run_button.clicked.connect(self._run_ocr)
         self._scale_combo.currentIndexChanged.connect(self._apply_scale)
         self._preprocess_checkbox.toggled.connect(self._preprocess_toggled)
+        self._model_download_checkbox.toggled.connect(self._language_changed)
         self._language_combo.currentIndexChanged.connect(self._language_changed)
         self._preview.roi_changed.connect(self._apply_roi)
+        self._table.images_dropped.connect(self._add_image_paths)
 
         selection_model = self._table.selectionModel()
         selection_model.currentChanged.connect(self._current_image_changed)
@@ -206,8 +239,11 @@ class MainWindow(QMainWindow):
         if not file_names:
             return
 
+        self._add_image_paths(Path(name) for name in file_names)
+
+    def _add_image_paths(self, paths: Iterable[Path]) -> None:
         previous_count = len(self._model.items)
-        added = self._model.add_paths(Path(name) for name in file_names)
+        added = self._model.add_paths(paths)
         self._update_footer()
         if added:
             index = self._model.index(previous_count, 0)
@@ -234,8 +270,7 @@ class MainWindow(QMainWindow):
             self._roi_label.setText("Static ROI: 전체 이미지")
         self._update_footer()
 
-    def _current_image_changed(self, current: QModelIndex, previous: QModelIndex) -> None:
-        del previous
+    def _current_image_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
         item = self._item_at(current.row()) if current.isValid() else None
         if item is None:
             self._preview.set_image(None)
@@ -293,6 +328,16 @@ class MainWindow(QMainWindow):
             not detector_model.is_file()
             or not is_language_model_installed(language_code, models)
         )
+        allow_model_download = self._model_download_checkbox.isChecked()
+        if requires_download and not allow_model_download:
+            QMessageBox.warning(
+                self,
+                "EasyOCR 모델 없음",
+                "필요한 EasyOCR 모델이 설치되어 있지 않습니다.\n\n"
+                "상단 톱니바퀴 설정에서 '모델 자동 다운로드'를 체크한 뒤 다시 실행해 주세요.",
+            )
+            return
+
         self._active_screenshot_preprocessing = (
             self._preprocess_checkbox.isChecked()
         )
@@ -314,11 +359,12 @@ class MainWindow(QMainWindow):
             )
 
         worker = OcrWorker(
-            items=list(self._model.items),
+            items=self._model.items,
             model_directory=models,
             result_directory=result_directory(),
             languages=reader_languages(language_code),
             screenshot_preprocessing=self._active_screenshot_preprocessing,
+            allow_model_download=allow_model_download,
         )
         worker.signals.progress.connect(self._ocr_progress)
         worker.signals.finished.connect(self._ocr_finished)
@@ -382,13 +428,15 @@ class MainWindow(QMainWindow):
             self._result_text.setPlainText(item.extracted_text)
 
     def _set_controls_enabled(self, enabled: bool) -> None:
+        if not enabled:
+            self._settings_popup.hide_panel()
         for widget in (
             self._add_button,
             self._remove_button,
             self._clear_button,
             self._language_combo,
-            self._scale_combo,
-            self._preprocess_checkbox,
+            self._settings_button,
+            self._settings_popup,
             self._clear_roi_button,
             self._run_button,
             self._table,
@@ -428,9 +476,13 @@ class MainWindow(QMainWindow):
         self._settings.setValue("ocr/primary_language", language_code)
         if is_language_model_installed(language_code, model_directory()):
             self._status_label.setText(f"인식 언어: {language.name}")
+        elif self._model_download_checkbox.isChecked():
+            self._status_label.setText(
+                f"인식 언어: {language.name} · OCR 실행 시 모델 자동 다운로드"
+            )
         else:
             self._status_label.setText(
-                f"인식 언어: {language.name} · 첫 실행 시 모델 자동 다운로드"
+                f"인식 언어: {language.name} · 모델 없음 · 자동 다운로드 OFF"
             )
 
     def _current_item(self) -> ImageItem | None:
@@ -475,6 +527,20 @@ class MainWindow(QMainWindow):
                 padding: 7px 12px;
             }
             QPushButton:hover, QComboBox:hover { border-color: #5d9cec; }
+            QPushButton#settingsButton {
+                font-family: "Segoe UI Symbol";
+                font-size: 20px;
+                padding: 0;
+            }
+            QFrame#settingsPopover {
+                background: #202429;
+                border: 1px solid #454d57;
+                border-radius: 10px;
+            }
+            QFrame#settingsPopover QLabel, QFrame#settingsPopover QCheckBox {
+                background: transparent;
+            }
+            QLabel#settingsTitle { font-weight: 600; font-size: 11pt; }
             QPushButton:disabled, QComboBox:disabled { color: #71767d; }
             QCheckBox { spacing: 7px; }
             QCheckBox::indicator {

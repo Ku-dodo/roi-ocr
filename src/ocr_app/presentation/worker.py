@@ -26,6 +26,7 @@ class OcrWorker(QRunnable):
         result_directory: Path,
         languages: Sequence[str],
         screenshot_preprocessing: bool = False,
+        allow_model_download: bool = False,
     ) -> None:
         super().__init__()
         self._items = list(items)
@@ -33,6 +34,7 @@ class OcrWorker(QRunnable):
         self._result_directory = result_directory
         self._languages = tuple(languages)
         self._screenshot_preprocessing = screenshot_preprocessing
+        self._allow_model_download = allow_model_download
         self.signals = OcrWorkerSignals()
 
     @Slot()
@@ -46,7 +48,7 @@ class OcrWorker(QRunnable):
                     model_directory=self._model_directory,
                     languages=self._languages,
                     use_gpu=False,
-                    allow_download=True,
+                    allow_download=self._allow_model_download,
                 ),
                 result_writer=CsvResultWriter(self._result_directory),
             )
