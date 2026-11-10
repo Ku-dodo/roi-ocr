@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -12,10 +14,13 @@ SOURCE_ROOT = PROJECT_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QCompleter
+from PySide6.QtCore import QEvent, QMimeData, QPoint, QPointF, QUrl, Qt
+from PySide6.QtGui import QDropEvent
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QCompleter, QMessageBox
 
 from ocr_app.domain.models import ImageStatus, Roi
+from ocr_app.presentation.image_drop_table import ImageDropTable
 from ocr_app.presentation.main_window import MainWindow
 
 
@@ -39,6 +44,11 @@ class MainWindowSmokeTests(unittest.TestCase):
             Qt.MatchFlag.MatchContains,
             window._language_combo.completer().filterMode(),
         )
+        self.assertFalse(window._model_download_checkbox.isChecked())
+        self.assertEqual(
+            [1, 2, 4],
+            [window._scale_combo.itemData(index) for index in range(window._scale_combo.count())],
+        )
         window.close()
 
     def test_language_combo_searches_name_and_rejects_unknown_text(self) -> None:
@@ -57,12 +67,132 @@ class MainWindowSmokeTests(unittest.TestCase):
         self.assertEqual("ko", combo.currentData())
         window.close()
 
-    def test_missing_language_model_is_marked_for_automatic_download(self) -> None:
+    def test_settings_hover_stays_open_when_entering_panel_and_closes_on_leave(self) -> None:
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window.show()
+        self.application.processEvents()
+        popup = window._settings_popup
+        self.assertFalse(popup.isVisible())
+        QApplication.sendEvent(window._settings_button, QEvent(QEvent.Type.Enter))
+        QTest.qWait(230)
+        self.assertTrue(popup.isVisible())
+        for control in (
+            window._model_download_checkbox, window._scale_combo, window._preprocess_checkbox,
+        ):
+            self.assertTrue(popup.isAncestorOf(control))
+        QApplication.sendEvent(window._settings_button, QEvent(QEvent.Type.Leave))
+        QApplication.sendEvent(popup, QEvent(QEvent.Type.Enter))
+        QTest.qWait(350)
+        self.assertTrue(popup.isVisible())
+        with patch(
+            "ocr_app.presentation.settings_popover.QCursor.pos",
+            return_value=window.mapToGlobal(QPoint(10, 400)),
+        ):
+            QApplication.sendEvent(popup, QEvent(QEvent.Type.Leave))
+            QTest.qWait(350)
+        self.assertFalse(popup.isVisible())
+
+    def test_settings_click_escape_and_outside_click(self) -> None:
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window.show()
+        self.application.processEvents()
+        QTest.mouseClick(window._settings_button, Qt.MouseButton.LeftButton)
+        self.assertTrue(window._settings_popup.isVisible())
+        QTest.keyClick(window._settings_button, Qt.Key.Key_Escape)
+        self.assertFalse(window._settings_popup.isVisible())
+        window._settings_button.click()
+        QTest.mouseClick(window._roi_label, Qt.MouseButton.LeftButton)
+        self.assertFalse(window._settings_popup.isVisible())
+
+    def test_settings_remain_open_while_scale_dropdown_is_used(self) -> None:
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window.show()
+        self.application.processEvents()
+        window._model.add_paths([Path("first.png"), Path("second.png")])
+        window._table.selectAll()
+        window._settings_button.click()
+        window._scale_combo.showPopup()
+        with patch(
+            "ocr_app.presentation.settings_popover.QCursor.pos",
+            return_value=window.mapToGlobal(QPoint(10, 400)),
+        ):
+            QApplication.sendEvent(window._settings_popup, QEvent(QEvent.Type.Leave))
+            QTest.qWait(350)
+            self.assertTrue(window._settings_popup.isVisible())
+            self.assertTrue(window._scale_combo.view().isVisible())
+        QTest.keyClick(window._scale_combo, Qt.Key.Key_Down)
+        QTest.keyClick(window._scale_combo, Qt.Key.Key_Return)
+        self.assertTrue(all(item.scale_factor == 2 for item in window._model.items))
+        self.assertTrue(window._settings_popup.isVisible())
+
+    def test_settings_close_and_cannot_reopen_during_ocr(self) -> None:
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window.show()
+        self.application.processEvents()
+        window._settings_button.click()
+        self.assertTrue(window._settings_popup.isVisible())
+        window._set_controls_enabled(False)
+        self.assertFalse(window._settings_popup.isVisible())
+        controls = (
+            window._model_download_checkbox, window._scale_combo, window._preprocess_checkbox,
+        )
+        self.assertTrue(all(not control.isEnabled() for control in controls))
+        window._settings_popup.show_panel()
+        self.assertFalse(window._settings_popup.isVisible())
+        window._set_controls_enabled(True)
+        self.assertTrue(all(control.isEnabled() for control in controls))
+        window._settings_button.click()
+        self.assertTrue(window._settings_popup.isVisible())
+
+    def test_missing_language_model_requires_download_opt_in(self) -> None:
         window = MainWindow()
         window._language_combo.setCurrentIndex(window._language_combo.findData("ja"))
-        self.assertIn("자동 다운로드", window._status_label.text())
+        self.assertIn("자동 다운로드 OFF", window._status_label.text())
+        window._model_download_checkbox.setChecked(True)
+        self.assertIn("모델 자동 다운로드", window._status_label.text())
         window._language_combo.setCurrentIndex(window._language_combo.findData("ko"))
         window.close()
+
+    def test_ocr_does_not_start_when_models_are_missing_and_download_is_off(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            window = MainWindow()
+            window._model.add_paths([Path("sample.png")])
+            window._thread_pool = Mock()
+
+            with (
+                patch(
+                    "ocr_app.presentation.main_window.model_directory",
+                    return_value=Path(temporary_directory),
+                ),
+                patch.object(QMessageBox, "warning") as warning,
+            ):
+                window._run_ocr()
+
+            warning.assert_called_once()
+            window._thread_pool.start.assert_not_called()
+            self.assertIsNone(window._worker)
+            window.close()
+
+    def test_ocr_worker_receives_download_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            window = MainWindow()
+            window._model.add_paths([Path("sample.png")])
+            window._model_download_checkbox.setChecked(True)
+            window._thread_pool = Mock()
+
+            with patch(
+                "ocr_app.presentation.main_window.model_directory",
+                return_value=Path(temporary_directory),
+            ):
+                window._run_ocr()
+
+            window._thread_pool.start.assert_called_once_with(window._worker)
+            self.assertTrue(window._worker._allow_model_download)
+            window.close()
 
     def test_previous_result_is_cleared_before_rerun(self) -> None:
         window = MainWindow()
@@ -93,7 +223,57 @@ class MainWindowSmokeTests(unittest.TestCase):
         self.assertTrue(
             all(item.roi == static_roi for item in window._model.items)
         )
+        window._clear_roi_button.click()
+        self.assertIsNone(window._static_roi)
         window.close()
+
+    def test_drop_data_accepts_only_existing_local_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            image_path = directory / "sample.PNG"
+            text_path = directory / "notes.txt"
+            image_path.touch()
+            text_path.touch()
+            mime_data = QMimeData()
+            mime_data.setUrls(
+                [
+                    QUrl.fromLocalFile(str(image_path)),
+                    QUrl.fromLocalFile(str(text_path)),
+                    QUrl("https://example.com/remote.png"),
+                ]
+            )
+
+            self.assertEqual((image_path,), ImageDropTable.image_paths(mime_data))
+
+    def test_dropped_paths_use_the_same_addition_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            first_path = Path(temporary_directory) / "first.png"
+            second_path = Path(temporary_directory) / "second.png"
+            first_path.touch()
+            second_path.touch()
+            mime_data = QMimeData()
+            mime_data.setUrls(
+                [
+                    QUrl.fromLocalFile(str(first_path)),
+                    QUrl.fromLocalFile(str(second_path)),
+                ]
+            )
+            drop_event = QDropEvent(
+                QPointF(),
+                Qt.DropAction.CopyAction,
+                mime_data,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+            window = MainWindow()
+
+            window._table.dropEvent(drop_event)
+
+            self.assertTrue(drop_event.isAccepted())
+            self.assertEqual(2, len(window._model.items))
+            self.assertEqual(0, window._table.currentIndex().row())
+            self.assertIn("2개", window._status_label.text())
+            window.close()
 
 
 if __name__ == "__main__":
