@@ -136,6 +136,14 @@ class MainWindow(QMainWindow):
             self._preprocess_checkbox.isChecked()
         )
         settings_layout.addWidget(self._preprocess_checkbox)
+        self._include_extension_checkbox = QCheckBox("CSV 파일 이름에 확장자 포함")
+        self._include_extension_checkbox.setChecked(
+            self._settings.value("csv/include_file_extension", True, type=bool)
+        )
+        self._include_extension_checkbox.setToolTip(
+            "체크 해제 시 CSV에 sample.png 대신 sample을 기록합니다. 원본 파일은 변경하지 않습니다."
+        )
+        settings_layout.addWidget(self._include_extension_checkbox)
         toolbar.addWidget(self._settings_button)
 
         self._clear_roi_button = QPushButton("Static ROI 해제")
@@ -220,6 +228,9 @@ class MainWindow(QMainWindow):
         self._run_button.clicked.connect(self._run_ocr)
         self._scale_combo.currentIndexChanged.connect(self._apply_scale)
         self._preprocess_checkbox.toggled.connect(self._preprocess_toggled)
+        self._include_extension_checkbox.toggled.connect(
+            lambda checked: self._settings.setValue("csv/include_file_extension", checked)
+        )
         self._model_download_checkbox.toggled.connect(self._language_changed)
         self._language_combo.currentIndexChanged.connect(self._language_changed)
         self._preview.roi_changed.connect(self._apply_roi)
@@ -365,6 +376,7 @@ class MainWindow(QMainWindow):
             languages=reader_languages(language_code),
             screenshot_preprocessing=self._active_screenshot_preprocessing,
             allow_model_download=allow_model_download,
+            include_file_extension=self._include_extension_checkbox.isChecked(),
         )
         worker.signals.progress.connect(self._ocr_progress)
         worker.signals.finished.connect(self._ocr_finished)

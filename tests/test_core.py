@@ -89,6 +89,28 @@ class UseCaseTests(unittest.TestCase):
 
 
 class CsvWriterTests(unittest.TestCase):
+    def test_file_extension_setting_only_changes_exported_names(self) -> None:
+        results = [
+            OcrResult("한글.png", "인식 결과", 0.9),
+            OcrResult("sample.v2.PNG", "점 포함", None),
+            OcrResult("extensionless", "확장자 없음", None),
+        ]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            for include in (True, False):
+                with self.subTest(include_file_extension=include):
+                    path = CsvResultWriter(
+                        Path(temporary_directory), include_file_extension=include,
+                    ).write(results)
+                    with path.open(encoding="utf-8-sig", newline="") as stream:
+                        rows = list(csv.reader(stream))
+                    expected = (
+                        ["한글.png", "sample.v2.PNG", "extensionless"]
+                        if include else ["한글", "sample.v2", "extensionless"]
+                    )
+                    self.assertEqual(expected, [row[0] for row in rows[1:]])
+                    self.assertEqual(["인식 결과", "90.00%"], rows[1][1:])
+                    self.assertEqual("한글.png", results[0].file_name)
+
     def test_csv_has_required_headers_and_utf8_bom(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             output_directory = Path(temporary_directory)
