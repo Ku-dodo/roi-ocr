@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Sequence
 
 from ocr_app.domain.models import OcrResult
-from ocr_app.domain.languages import get_language
 
 
 class CsvResultWriter:
@@ -37,7 +36,7 @@ class CsvResultWriter:
                 writer.writerow(
                     (
                         file_name,
-                        get_language(result.language_code).name,
+                        result.language_code,
                         result.extracted_text,
                         result.status.value,
                         confidence,

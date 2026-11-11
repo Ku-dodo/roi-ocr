@@ -110,7 +110,7 @@ class OcrWorkerTests(unittest.TestCase):
             with next(path.glob("*.csv")).open(encoding="utf-8-sig", newline="") as stream:
                 rows = list(csv.reader(stream))
             self.assertEqual([i.path.name for i in items], [r[0] for r in rows[1:]])
-            self.assertEqual(["중국어(간체)", "한국어", "한국어", "영어"], [r[1] for r in rows[1:]])
+            self.assertEqual(["ch_sim", "ko", "ko", "en"], [r[1] for r in rows[1:]])
             self.assertTrue(all(r[3] == "Done" for r in rows[1:]))
 
     def test_model_load_failure_does_not_stop_other_languages(self) -> None:
@@ -132,8 +132,8 @@ class OcrWorkerTests(unittest.TestCase):
             import csv
             with next(path.glob("*.csv")).open(encoding="utf-8-sig", newline="") as stream:
                 rows = list(csv.reader(stream))
-            self.assertEqual(["일본어", "", "Fail", ""], rows[1][1:])
-            self.assertEqual(["한국어", "ok", "Done", "90.00%"], rows[2][1:])
+            self.assertEqual(["ja", "", "Fail", ""], rows[1][1:])
+            self.assertEqual(["ko", "ok", "Done", "90.00%"], rows[2][1:])
 
 
 if __name__ == "__main__":

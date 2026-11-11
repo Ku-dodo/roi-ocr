@@ -135,7 +135,7 @@ class CsvWriterTests(unittest.TestCase):
                         if include else ["한글", "sample.v2", "extensionless"]
                     )
                     self.assertEqual(expected, [row[0] for row in rows[1:]])
-                    self.assertEqual(["한국어", "인식 결과", "Done", "90.00%"], rows[1][1:])
+                    self.assertEqual(["ko", "인식 결과", "Done", "90.00%"], rows[1][1:])
                     self.assertEqual("한글.png", results[0].file_name)
 
     def test_csv_has_required_headers_and_utf8_bom(self) -> None:
@@ -157,10 +157,10 @@ class CsvWriterTests(unittest.TestCase):
             self.assertEqual(
                 ["파일 이름", "언어", "추출 문자열", "상태", "신뢰도"], rows[0]
             )
-            self.assertEqual(["한글.png", "한국어", "추출 문자열", "Done", "93.46%"], rows[1])
-            self.assertEqual(["빈칸.png", "한국어", "", "Need Review", ""], rows[2])
-            self.assertEqual(["실패.png", "일본어", "", "Fail", ""], rows[3])
-            self.assertEqual(["중국어.png", "중국어(간체)", '你好, "世界"\n두 번째 줄', "Need Review", "52.00%"], rows[4])
+            self.assertEqual(["한글.png", "ko", "추출 문자열", "Done", "93.46%"], rows[1])
+            self.assertEqual(["빈칸.png", "ko", "", "Need Review", ""], rows[2])
+            self.assertEqual(["실패.png", "ja", "", "Fail", ""], rows[3])
+            self.assertEqual(["중국어.png", "ch_sim", '你好, "世界"\n두 번째 줄', "Need Review", "52.00%"], rows[4])
 
 
 if __name__ == "__main__":
