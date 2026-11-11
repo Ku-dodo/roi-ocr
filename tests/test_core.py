@@ -18,6 +18,7 @@ from ocr_app.domain.models import (
     ImageStatus,
     OcrRecognition,
     OcrResult,
+    OcrResultStatus,
     Roi,
     validate_scale_factor,
 )
@@ -48,6 +49,20 @@ class CapturingWriter:
 
 
 class DomainTests(unittest.TestCase):
+    def test_result_status_handles_review_boundary_empty_text_and_failure(self) -> None:
+        for text, confidence, failed, expected in (
+            ("인식 결과", 0.8, False, OcrResultStatus.DONE),
+            ("인식 결과", 0.7999, False, OcrResultStatus.NEED_REVIEW),
+            ("인식 결과", None, False, OcrResultStatus.NEED_REVIEW),
+            ("  \n", 0.99, False, OcrResultStatus.NEED_REVIEW),
+            ("", None, False, OcrResultStatus.NEED_REVIEW),
+            ("인식 결과", float("nan"), False, OcrResultStatus.NEED_REVIEW),
+            ("", None, True, OcrResultStatus.FAIL),
+        ):
+            with self.subTest(text=text, confidence=confidence, failed=failed):
+                result = OcrResult("sample.png", text, confidence, processing_failed=failed)
+                self.assertEqual(expected, result.status)
+
     def test_language_catalog_matches_easyocr_172(self) -> None:
         self.assertEqual(86, len(SUPPORTED_LANGUAGES))
         self.assertEqual(86, len({language.code for language in SUPPORTED_LANGUAGES}))
@@ -86,6 +101,18 @@ class UseCaseTests(unittest.TestCase):
         self.assertEqual(0.875, writer.results[0].confidence)
         self.assertEqual("", writer.results[1].extracted_text)
         self.assertIsNone(writer.results[1].confidence)
+        self.assertEqual(OcrResultStatus.DONE, writer.results[0].status)
+        self.assertEqual(OcrResultStatus.FAIL, writer.results[1].status)
+
+    def test_result_records_effective_default_and_override_languages(self) -> None:
+        writer = CapturingWriter(Path("result.csv"))
+        use_case = ProcessImagesUseCase(
+            FakeImageProcessor(), FakeOcrEngine(), writer, default_language_code="ja",
+        )
+        items = [ImageItem(Path("default.png")), ImageItem(Path("override.png"), language_code="ch_sim")]
+        use_case.execute(items)
+        self.assertEqual(["ja", "ch_sim"], [result.language_code for result in writer.results])
+        self.assertIsNone(items[0].language_code)
 
 
 class CsvWriterTests(unittest.TestCase):
@@ -108,7 +135,7 @@ class CsvWriterTests(unittest.TestCase):
                         if include else ["한글", "sample.v2", "extensionless"]
                     )
                     self.assertEqual(expected, [row[0] for row in rows[1:]])
-                    self.assertEqual(["인식 결과", "90.00%"], rows[1][1:])
+                    self.assertEqual(["한국어", "인식 결과", "Done", "90.00%"], rows[1][1:])
                     self.assertEqual("한글.png", results[0].file_name)
 
     def test_csv_has_required_headers_and_utf8_bom(self) -> None:
@@ -118,6 +145,8 @@ class CsvWriterTests(unittest.TestCase):
                 [
                     OcrResult("한글.png", "추출 문자열", 0.93456),
                     OcrResult("빈칸.png", "", None),
+                    OcrResult("실패.png", "", None, language_code="ja", processing_failed=True),
+                    OcrResult("중국어.png", '你好, "世界"\n두 번째 줄', 0.52, language_code="ch_sim"),
                 ]
             )
 
@@ -126,10 +155,12 @@ class CsvWriterTests(unittest.TestCase):
             with output_path.open("r", encoding="utf-8-sig", newline="") as stream:
                 rows = list(csv.reader(stream))
             self.assertEqual(
-                ["파일 이름", "추출 문자열", "정확도(신뢰도)"], rows[0]
+                ["파일 이름", "언어", "추출 문자열", "상태", "신뢰도"], rows[0]
             )
-            self.assertEqual(["한글.png", "추출 문자열", "93.46%"], rows[1])
-            self.assertEqual(["빈칸.png", "", ""], rows[2])
+            self.assertEqual(["한글.png", "한국어", "추출 문자열", "Done", "93.46%"], rows[1])
+            self.assertEqual(["빈칸.png", "한국어", "", "Need Review", ""], rows[2])
+            self.assertEqual(["실패.png", "일본어", "", "Fail", ""], rows[3])
+            self.assertEqual(["중국어.png", "중국어(간체)", '你好, "世界"\n두 번째 줄', "Need Review", "52.00%"], rows[4])
 
 
 if __name__ == "__main__":

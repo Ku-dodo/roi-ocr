@@ -36,6 +36,7 @@ from ocr_app.infrastructure.paths import model_directory, result_directory
 from ocr_app.presentation.image_drop_table import ImageDropTable
 from ocr_app.presentation.image_preview import ImagePreview
 from ocr_app.presentation.image_table_model import ImageTableModel
+from ocr_app.presentation.language_delegate import LanguageDelegate
 from ocr_app.presentation.searchable_combo_box import SearchableComboBox
 from ocr_app.presentation.settings_popover import SettingsPopover
 from ocr_app.presentation.worker import OcrWorker
@@ -79,7 +80,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self._clear_button)
         toolbar.addStretch(1)
 
-        toolbar.addWidget(QLabel("인식 언어"))
+        toolbar.addWidget(QLabel("기본 인식 언어"))
         self._language_combo = SearchableComboBox()
         self._language_combo.setMinimumContentsLength(18)
         for language in SUPPORTED_LANGUAGES:
@@ -90,7 +91,8 @@ class MainWindow(QMainWindow):
             language_index = self._language_combo.findData("ko")
         self._language_combo.setCurrentIndex(language_index)
         self._language_combo.setToolTip(
-            "주 인식 언어를 선택합니다. 영어가 아닌 언어에는 영어 인식을 함께 적용합니다."
+            "기본값 사용인 파일에 적용됩니다. 파일별 언어는 목록에서 변경할 수 있습니다. "
+            "영어가 아닌 언어에는 영어 인식을 함께 적용합니다."
         )
         toolbar.addWidget(self._language_combo)
 
@@ -162,12 +164,21 @@ class MainWindow(QMainWindow):
         file_layout.setContentsMargins(10, 16, 10, 10)
         drop_hint = QLabel("이미지 파일을 이 영역으로 드래그해 추가할 수 있습니다.")
         drop_hint.setObjectName("mutedLabel")
-        file_layout.addWidget(drop_hint)
+        file_tools = QHBoxLayout()
+        file_tools.addWidget(drop_hint, 1)
+        self._file_language_button = QPushButton("선택 파일 언어 변경")
+        self._file_language_button.setToolTip("여러 파일을 선택하면 언어를 한 번에 변경합니다.")
+        file_tools.addWidget(self._file_language_button)
+        file_layout.addLayout(file_tools)
         self._table = ImageDropTable()
         self._table.setModel(self._model)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._language_delegate = LanguageDelegate(self._table)
+        self._table.setItemDelegateForColumn(
+            ImageTableModel.LANGUAGE_COLUMN, self._language_delegate
+        )
         self._table.setAlternatingRowColors(True)
         self._table.setShowGrid(True)
         self._table.setGridStyle(Qt.PenStyle.SolidLine)
@@ -175,10 +186,17 @@ class MainWindow(QMainWindow):
         self._table.verticalHeader().setDefaultSectionSize(38)
         self._table.horizontalHeader().setHighlightSections(False)
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in (1, 2, 3):
+        for column in (1, 2, 3, 4):
             self._table.horizontalHeader().setSectionResizeMode(
                 column, QHeaderView.ResizeMode.ResizeToContents
             )
+        self._table.horizontalHeader().setSectionResizeMode(
+            ImageTableModel.LANGUAGE_COLUMN, QHeaderView.ResizeMode.Interactive
+        )
+        self._table.setColumnWidth(
+            ImageTableModel.LANGUAGE_COLUMN,
+            max(190, self._table.fontMetrics().horizontalAdvance("중국어(번체) (ch_tra)") + 48),
+        )
         file_layout.addWidget(self._table)
 
         file_footer = QHBoxLayout()
@@ -235,6 +253,8 @@ class MainWindow(QMainWindow):
         self._language_combo.currentIndexChanged.connect(self._language_changed)
         self._preview.roi_changed.connect(self._apply_roi)
         self._table.images_dropped.connect(self._add_image_paths)
+        self._table.clicked.connect(self._edit_language_cell)
+        self._file_language_button.clicked.connect(self._edit_selected_language)
 
         selection_model = self._table.selectionModel()
         selection_model.currentChanged.connect(self._current_image_changed)
@@ -307,6 +327,15 @@ class MainWindow(QMainWindow):
                 item.scale_factor = scale_factor
                 self._model.notify_item_updated(item)
 
+    def _edit_language_cell(self, index: QModelIndex) -> None:
+        if index.column() == ImageTableModel.LANGUAGE_COLUMN:
+            self._table.edit(index)
+
+    def _edit_selected_language(self) -> None:
+        rows = self._table.selectionModel().selectedRows()
+        if rows:
+            self._table.edit(self._model.index(rows[0].row(), ImageTableModel.LANGUAGE_COLUMN))
+
     def _apply_roi(self, roi: Roi | None) -> None:
         self._static_roi = roi
         current = self._current_item()
@@ -333,11 +362,16 @@ class MainWindow(QMainWindow):
             )
             return
         language_code = selected_language
-        language = get_language(language_code)
+        effective_codes = {item.language_code or language_code for item in self._model.items}
         detector_model = models / "craft_mlt_25k.pth"
+        missing_languages = [
+            get_language(code).name
+            for code in sorted(effective_codes)
+            if not is_language_model_installed(code, models)
+        ]
         requires_download = (
             not detector_model.is_file()
-            or not is_language_model_installed(language_code, models)
+            or bool(missing_languages)
         )
         allow_model_download = self._model_download_checkbox.isChecked()
         if requires_download and not allow_model_download:
@@ -345,6 +379,9 @@ class MainWindow(QMainWindow):
                 self,
                 "EasyOCR 모델 없음",
                 "필요한 EasyOCR 모델이 설치되어 있지 않습니다.\n\n"
+                + (f"인식 모델 없음: {', '.join(missing_languages)}\n" if missing_languages else "")
+                + ("공통 텍스트 검출 모델 없음\n" if not detector_model.is_file() else "")
+                + "\n"
                 "상단 톱니바퀴 설정에서 '모델 자동 다운로드'를 체크한 뒤 다시 실행해 주세요.",
             )
             return
@@ -360,7 +397,7 @@ class MainWindow(QMainWindow):
         if requires_download:
             self._progress_bar.setRange(0, 0)
             self._status_label.setText(
-                f"{language.name} OCR 모델을 다운로드하는 중입니다... · {preprocess_state}"
+                f"필요한 OCR 모델을 준비하는 중입니다... · {preprocess_state}"
             )
         else:
             self._progress_bar.setRange(0, len(self._model.items))
@@ -452,8 +489,10 @@ class MainWindow(QMainWindow):
             self._clear_roi_button,
             self._run_button,
             self._table,
+            self._file_language_button,
         ):
             widget.setEnabled(enabled)
+        self._update_footer()
 
     def _preprocess_toggled(self, checked: bool) -> None:
         self._settings.setValue("ocr/screenshot_preprocessing", checked)
@@ -486,6 +525,7 @@ class MainWindow(QMainWindow):
         language_code = selected_language
         language = get_language(language_code)
         self._settings.setValue("ocr/primary_language", language_code)
+        self._model.set_default_language(language_code)
         if is_language_model_installed(language_code, model_directory()):
             self._status_label.setText(f"인식 언어: {language.name}")
         elif self._model_download_checkbox.isChecked():
@@ -511,6 +551,7 @@ class MainWindow(QMainWindow):
         selection_count = len(self._table.selectionModel().selectedRows())
         self._file_count_label.setText(f"{file_count}개 파일")
         self._selection_count_label.setText(f"{selection_count}개 선택")
+        self._file_language_button.setEnabled(selection_count > 0 and self._table.isEnabled())
 
     def _apply_style(self) -> None:
         self.setStyleSheet(

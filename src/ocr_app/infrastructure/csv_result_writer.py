@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import csv
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
 from ocr_app.domain.models import OcrResult
+from ocr_app.domain.languages import get_language
 
 
 class CsvResultWriter:
@@ -20,7 +22,7 @@ class CsvResultWriter:
 
         with output_path.open("w", encoding="utf-8-sig", newline="") as stream:
             writer = csv.writer(stream, quoting=csv.QUOTE_ALL)
-            writer.writerow(("파일 이름", "추출 문자열", "정확도(신뢰도)"))
+            writer.writerow(("파일 이름", "언어", "추출 문자열", "상태", "신뢰도"))
             for result in results:
                 file_name = (
                     result.file_name
@@ -29,11 +31,17 @@ class CsvResultWriter:
                 )
                 confidence = (
                     f"{result.confidence * 100:.2f}%"
-                    if result.confidence is not None
+                    if result.confidence is not None and math.isfinite(result.confidence)
                     else ""
                 )
                 writer.writerow(
-                    (file_name, result.extracted_text, confidence)
+                    (
+                        file_name,
+                        get_language(result.language_code).name,
+                        result.extracted_text,
+                        result.status.value,
+                        confidence,
+                    )
                 )
 
         return output_path

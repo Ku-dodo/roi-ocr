@@ -60,7 +60,7 @@ class MainWindowSmokeTests(unittest.TestCase):
     def test_main_window_can_be_constructed(self) -> None:
         window = MainWindow()
         self.assertEqual("이미지 OCR 도구", window.windowTitle())
-        self.assertEqual(4, window._model.columnCount())
+        self.assertEqual(5, window._model.columnCount())
         self.assertEqual(86, window._language_combo.count())
         self.assertGreaterEqual(window._language_combo.findData("ko"), 0)
         self.assertTrue(window._language_combo.isEditable())
@@ -78,6 +78,112 @@ class MainWindowSmokeTests(unittest.TestCase):
             [window._scale_combo.itemData(index) for index in range(window._scale_combo.count())],
         )
         window.close()
+
+    def test_default_language_changes_only_inherited_files(self) -> None:
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window._model.add_paths([Path("default.png"), Path("explicit.png")])
+        window._model.set_language_for_rows([1], "ko")
+        window._language_combo.setCurrentIndex(window._language_combo.findData("ch_sim"))
+        self.assertEqual("기본값 · 중국어(간체)", window._model.index(0, 3).data())
+        self.assertEqual("한국어", window._model.index(1, 3).data())
+        window._model.set_language_for_rows([1], None)
+        self.assertEqual("기본값 · 중국어(간체)", window._model.index(1, 3).data())
+        window._language_combo.setCurrentIndex(window._language_combo.findData("ko"))
+
+    def test_bulk_language_editor_applies_choice_and_restores_default(self) -> None:
+        from ocr_app.presentation.searchable_combo_box import SearchableComboBox
+
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window._model.add_paths([Path("first.png"), Path("second.png")])
+        window.show()
+        window._table.selectAll()
+        for code in ("ch_sim", None):
+            window._file_language_button.click()
+            self.application.processEvents()
+            editor = window._table.findChild(SearchableComboBox)
+            self.assertIsNotNone(editor)
+            editor.setCurrentIndex(editor.findData(code))
+            editor.activated.emit(editor.currentIndex())
+            self.application.processEvents()
+            self.assertEqual([code, code], [i.language_code for i in window._model.items])
+            QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+    def test_override_model_is_checked_even_when_default_is_installed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            models = Path(temporary_directory)
+            (models / "craft_mlt_25k.pth").touch()
+            (models / "korean_g2.pth").touch()
+            window = MainWindow()
+            self.addCleanup(window.close)
+            window._language_combo.setCurrentIndex(window._language_combo.findData("ko"))
+            window._model.add_paths([Path("chinese.png")])
+            window._model.set_language_for_rows([0], "ch_sim")
+            window._thread_pool = Mock()
+            with (
+                patch("ocr_app.presentation.main_window.model_directory", return_value=models),
+                patch.object(QMessageBox, "warning") as warning,
+            ):
+                window._run_ocr()
+            self.assertIn("중국어(간체)", warning.call_args.args[2])
+            window._thread_pool.start.assert_not_called()
+
+    def test_language_cell_click_opens_editor_and_escape_preserves_override(self) -> None:
+        from ocr_app.presentation.searchable_combo_box import SearchableComboBox
+
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window._model.add_paths([Path("first.png")])
+        window._model.set_language_for_rows([0], "ja")
+        window.show()
+        self.application.processEvents()
+        index = window._model.index(0, 3)
+        QTest.mouseClick(window._table.viewport(), Qt.MouseButton.LeftButton,
+                         pos=window._table.visualRect(index).center())
+        editor = window._table.findChild(SearchableComboBox)
+        self.assertIsNotNone(editor)
+        editor.setCurrentIndex(editor.findData("ko"))
+        QTest.keyClick(editor, Qt.Key.Key_Escape)
+        self.assertEqual("ja", window._model.items[0].language_code)
+
+    def test_language_popup_fits_labels_even_when_column_is_narrow(self) -> None:
+        from ocr_app.presentation.searchable_combo_box import SearchableComboBox
+
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window._model.add_paths([Path("first.png")])
+        window.show()
+        self.application.processEvents()
+        self.assertGreaterEqual(window._table.columnWidth(3), 190)
+        window._table.setColumnWidth(3, 80)
+        window._table.selectRow(0)
+        window._file_language_button.click()
+        editor = window._table.findChild(SearchableComboBox)
+        editor.showPopup()
+        self.application.processEvents()
+        longest_label = max(editor.view().fontMetrics().horizontalAdvance(editor.itemText(row))
+                            for row in range(editor.count()))
+        self.assertGreater(editor.view().viewport().width(), longest_label)
+        self.assertGreater(editor.view().width(), editor.width())
+        self.assertGreater(editor.completer().popup().minimumWidth(), longest_label)
+        editor.hidePopup()
+        QTest.keyClick(editor, Qt.Key.Key_Escape)
+
+    def test_opening_bulk_editor_without_choosing_preserves_mixed_languages(self) -> None:
+        from ocr_app.presentation.searchable_combo_box import SearchableComboBox
+
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window._model.add_paths([Path("first.png"), Path("second.png")])
+        window._model.set_language_for_rows([1], "ch_sim")
+        window.show()
+        window._table.selectAll()
+        window._file_language_button.click()
+        editor = window._table.findChild(SearchableComboBox)
+        window._language_delegate.commitData.emit(editor)
+        window._language_delegate.closeEditor.emit(editor)
+        self.assertEqual([None, "ch_sim"], [i.language_code for i in window._model.items])
 
     def test_language_combo_searches_name_and_rejects_unknown_text(self) -> None:
         window = MainWindow()

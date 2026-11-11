@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
     QFrame,
@@ -29,6 +29,7 @@ class ImagePreview(QGraphicsView):
         self._roi_item: QGraphicsRectItem | None = None
         self._drag_origin: QPointF | None = None
         self._roi_before_drag: QRectF | None = None
+        self._pan_origin: QPoint | None = None
         self._zoom = 1.0
 
         self.setBackgroundBrush(QColor("#111315"))
@@ -39,10 +40,12 @@ class ImagePreview(QGraphicsView):
         self.setToolTip(
             "마우스로 드래그하여 모든 이미지에 적용할 Static ROI를 지정합니다. "
             "휠로 확대·축소하고 더블클릭하면 전체 이미지에 맞춥니다. "
+            "휠 버튼을 누른 채 드래그하면 이미지를 이동합니다. "
             "오른쪽 클릭하면 Static ROI가 해제됩니다."
         )
 
     def set_image(self, path: Path | None, roi: Roi | None = None) -> bool:
+        self._stop_panning()
         self._graphics_scene.clear()
         self._pixmap_item = None
         self._roi_item = None
@@ -86,7 +89,7 @@ class ImagePreview(QGraphicsView):
             return
 
         # Keep an in-progress selection in the same view until it is committed.
-        if self._drag_origin is not None:
+        if self._drag_origin is not None or self._pan_origin is not None:
             event.accept()
             return
 
@@ -105,6 +108,9 @@ class ImagePreview(QGraphicsView):
         event.accept()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        if self._pan_origin is not None:
+            event.accept()
+            return
         if self._pixmap_item is not None and event.button() == Qt.MouseButton.LeftButton:
             self._drag_origin = None
             self._fit_image()
@@ -115,6 +121,17 @@ class ImagePreview(QGraphicsView):
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if self._pixmap_item is None:
             super().mousePressEvent(event)
+            return
+
+        if self._pan_origin is not None:
+            event.accept()
+            return
+
+        if event.button() == Qt.MouseButton.MiddleButton:
+            if self._drag_origin is None:
+                self._pan_origin = event.position().toPoint()
+                self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
             return
 
         if event.button() == Qt.MouseButton.RightButton:
@@ -132,6 +149,16 @@ class ImagePreview(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self._pan_origin is not None:
+            position = event.position().toPoint()
+            delta = position - self._pan_origin
+            self._pan_origin = position
+            horizontal = self.horizontalScrollBar()
+            vertical = self.verticalScrollBar()
+            horizontal.setValue(horizontal.value() - delta.x())
+            vertical.setValue(vertical.value() - delta.y())
+            event.accept()
+            return
         if self._drag_origin is not None:
             current = self._clamped_scene_point(event.position().toPoint())
             self._set_roi_rect(QRectF(self._drag_origin, current).normalized())
@@ -140,6 +167,11 @@ class ImagePreview(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self._pan_origin is not None:
+            if event.button() == Qt.MouseButton.MiddleButton:
+                self._stop_panning()
+            event.accept()
+            return
         if event.button() == Qt.MouseButton.LeftButton and self._drag_origin is not None:
             current = self._clamped_scene_point(event.position().toPoint())
             rectangle = QRectF(self._drag_origin, current).normalized()
@@ -161,6 +193,15 @@ class ImagePreview(QGraphicsView):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+
+    def focusOutEvent(self, event) -> None:
+        self._stop_panning()
+        super().focusOutEvent(event)
+
+    def _stop_panning(self) -> None:
+        if self._pan_origin is not None:
+            self._pan_origin = None
+            self.viewport().unsetCursor()
 
     def _fit_image(self) -> None:
         if self._pixmap_item is not None:

@@ -15,6 +15,7 @@ if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
 from ocr_app.presentation.worker import OcrWorker
+from ocr_app.domain.models import ImageItem, ImageStatus, OcrRecognition
 
 
 class OcrWorkerTests(unittest.TestCase):
@@ -39,11 +40,11 @@ class OcrWorkerTests(unittest.TestCase):
             path = Path(temporary_directory)
             with (
                 patch("ocr_app.presentation.worker.EasyOcrEngine") as engine_type,
-                patch("ocr_app.presentation.worker.ProcessImagesUseCase") as use_case_type,
+                patch("ocr_app.presentation.worker.OpenCvImageProcessor"),
             ):
-                use_case_type.return_value.execute.return_value = object()
+                engine_type.return_value.recognize.return_value = OcrRecognition("text", 0.9)
                 worker = OcrWorker(
-                    items=[],
+                    items=[ImageItem(path / "sample.png")],
                     model_directory=path / "models",
                     result_directory=path / "result",
                     languages=("ja", "en"),
@@ -63,11 +64,11 @@ class OcrWorkerTests(unittest.TestCase):
             path = Path(temporary_directory)
             with (
                 patch("ocr_app.presentation.worker.EasyOcrEngine") as engine_type,
-                patch("ocr_app.presentation.worker.ProcessImagesUseCase") as use_case_type,
+                patch("ocr_app.presentation.worker.OpenCvImageProcessor"),
             ):
-                use_case_type.return_value.execute.return_value = object()
+                engine_type.return_value.recognize.return_value = OcrRecognition("text", 0.9)
                 worker = OcrWorker(
-                    items=[],
+                    items=[ImageItem(path / "sample.png")],
                     model_directory=path / "models",
                     result_directory=path / "result",
                     languages=("ja", "en"),
@@ -82,6 +83,57 @@ class OcrWorkerTests(unittest.TestCase):
                     use_gpu=False,
                     allow_download=True,
                 )
+
+    def test_mixed_languages_use_overrides_and_keep_csv_order(self) -> None:
+        import csv
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory)
+            items = [
+                ImageItem(path / "chinese.png", language_code="ch_sim"),
+                ImageItem(path / "korean.png"),
+                ImageItem(path / "korean2.png", language_code="ko"),
+                ImageItem(path / "english.png", language_code="en"),
+            ]
+            with (
+                patch("ocr_app.presentation.worker.EasyOcrEngine") as engine_type,
+                patch("ocr_app.presentation.worker.OpenCvImageProcessor"),
+            ):
+                engine_type.side_effect = lambda **kw: type("Reader", (), {
+                    "recognize": lambda _, image: OcrRecognition(kw["languages"][0], 0.9)
+                })()
+                worker = OcrWorker(items, path, path, languages=("ko", "en"))
+                worker.run()
+            self.assertEqual(["ch_sim", "ko", "ko", "en"], [i.extracted_text for i in items])
+            self.assertTrue(all(i.status == ImageStatus.COMPLETED for i in items))
+            self.assertEqual(3, engine_type.call_count)
+            with next(path.glob("*.csv")).open(encoding="utf-8-sig", newline="") as stream:
+                rows = list(csv.reader(stream))
+            self.assertEqual([i.path.name for i in items], [r[0] for r in rows[1:]])
+            self.assertEqual(["중국어(간체)", "한국어", "한국어", "영어"], [r[1] for r in rows[1:]])
+            self.assertTrue(all(r[3] == "Done" for r in rows[1:]))
+
+    def test_model_load_failure_does_not_stop_other_languages(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory)
+            items = [ImageItem(path / "bad.png", language_code="ja"), ImageItem(path / "good.png")]
+            with (
+                patch("ocr_app.presentation.worker.EasyOcrEngine") as engine_type,
+                patch("ocr_app.presentation.worker.OpenCvImageProcessor"),
+            ):
+                from unittest.mock import Mock
+                engine_type.side_effect = [RuntimeError("model unavailable"), Mock(
+                    recognize=Mock(return_value=OcrRecognition("ok", 0.9))
+                )]
+                worker = OcrWorker(items, path, path, languages=("ko", "en"))
+                worker.run()
+            self.assertEqual(ImageStatus.FAILED, items[0].status)
+            self.assertEqual(ImageStatus.COMPLETED, items[1].status)
+            import csv
+            with next(path.glob("*.csv")).open(encoding="utf-8-sig", newline="") as stream:
+                rows = list(csv.reader(stream))
+            self.assertEqual(["일본어", "", "Fail", ""], rows[1][1:])
+            self.assertEqual(["한국어", "ok", "Done", "90.00%"], rows[2][1:])
 
 
 if __name__ == "__main__":
