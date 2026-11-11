@@ -2,10 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import math
 from pathlib import Path
 
 
 SUPPORTED_SCALE_FACTORS = (1, 2, 4)
+REVIEW_CONFIDENCE_THRESHOLD = 0.8
+
+
+class OcrResultStatus(str, Enum):
+    DONE = "Done"
+    FAIL = "Fail"
+    NEED_REVIEW = "Need Review"
 
 
 class ImageStatus(str, Enum):
@@ -36,6 +44,7 @@ class ImageItem:
     confidence: float | None = None
     status: ImageStatus = ImageStatus.READY
     error_message: str = ""
+    language_code: str | None = None
 
     def __post_init__(self) -> None:
         self.path = self.path.resolve()
@@ -53,6 +62,21 @@ class OcrResult:
     file_name: str
     extracted_text: str
     confidence: float | None = None
+    language_code: str = "ko"
+    processing_failed: bool = False
+
+    @property
+    def status(self) -> OcrResultStatus:
+        if self.processing_failed:
+            return OcrResultStatus.FAIL
+        if (
+            not self.extracted_text.strip()
+            or self.confidence is None
+            or not math.isfinite(self.confidence)
+            or not REVIEW_CONFIDENCE_THRESHOLD <= self.confidence <= 1.0
+        ):
+            return OcrResultStatus.NEED_REVIEW
+        return OcrResultStatus.DONE
 
 
 def validate_scale_factor(scale_factor: int) -> None:

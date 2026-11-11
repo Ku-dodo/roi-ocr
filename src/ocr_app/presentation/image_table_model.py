@@ -7,14 +7,17 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 
 from ocr_app.domain.models import ImageItem, ImageStatus
+from ocr_app.domain.languages import get_language
 
 
 class ImageTableModel(QAbstractTableModel):
-    HEADERS = ("파일 이름", "형식", "배율", "상태")
+    HEADERS = ("파일 이름", "형식", "배율", "인식 언어", "상태")
+    LANGUAGE_COLUMN = 3
 
     def __init__(self) -> None:
         super().__init__()
         self.items: list[ImageItem] = []
+        self.default_language_code = "ko"
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self.items)
@@ -32,11 +35,18 @@ class ImageTableModel(QAbstractTableModel):
                 item.path.name,
                 item.path.suffix.removeprefix(".").upper(),
                 f"{item.scale_factor}x",
+                (
+                    get_language(item.language_code).name
+                    if item.language_code is not None
+                    else f"기본값 · {get_language(self.default_language_code).name}"
+                ),
                 item.status.value,
             )
             return values[index.column()]
 
         if role == Qt.ItemDataRole.ToolTipRole:
+            if index.column() == self.LANGUAGE_COLUMN:
+                return "클릭하여 파일의 언어를 변경합니다. 기본값 사용 시 상단 언어를 따라갑니다."
             if item.error_message:
                 return f"{item.path}\n\n오류: {item.error_message}"
             return str(item.path)
@@ -53,6 +63,23 @@ class ImageTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.UserRole:
             return item
         return None
+
+    def set_default_language(self, code: str) -> None:
+        get_language(code)
+        self.default_language_code = code
+        if self.items:
+            self.dataChanged.emit(
+                self.index(0, self.LANGUAGE_COLUMN),
+                self.index(len(self.items) - 1, self.LANGUAGE_COLUMN),
+            )
+
+    def set_language_for_rows(self, rows: Iterable[int], code: str | None) -> None:
+        if code is not None:
+            get_language(code)
+        for row in set(rows):
+            if 0 <= row < len(self.items):
+                self.items[row].language_code = code
+                self.notify_item_updated(self.items[row])
 
     def headerData(
         self,
@@ -71,7 +98,10 @@ class ImageTableModel(QAbstractTableModel):
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:
         if not index.isValid():
             return Qt.ItemFlag.NoItemFlags
-        return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        if index.column() == self.LANGUAGE_COLUMN:
+            flags |= Qt.ItemFlag.ItemIsEditable
+        return flags
 
     def add_paths(self, paths: Iterable[Path]) -> int:
         existing = {str(item.path).casefold() for item in self.items}

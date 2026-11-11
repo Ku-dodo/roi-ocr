@@ -25,6 +25,25 @@ class SearchableComboBox(QComboBox):
         line_edit.editingFinished.connect(self._restore_valid_selection)
         self.currentIndexChanged.connect(self._remember_valid_selection)
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._update_popup_width()
+
+    def _update_popup_width(self) -> None:
+        # A table cell may be narrow; the list still needs room for every label.
+        metrics = self.view().fontMetrics()
+        text_width = max(
+            (metrics.horizontalAdvance(self.itemText(row)) for row in range(self.count())),
+            default=0,
+        )
+        popup_width = max(self.width(), text_width + 56)
+        self.view().setMinimumWidth(popup_width)
+        self.completer().popup().setMinimumWidth(popup_width)
+
+    def showPopup(self) -> None:
+        self._update_popup_width()
+        super().showPopup()
+
     def _remember_valid_selection(self, index: int) -> None:
         if index >= 0:
             self._last_valid_index = index

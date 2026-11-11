@@ -10,8 +10,8 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
-from PySide6.QtGui import QPixmap, QWheelEvent
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
+from PySide6.QtGui import QFocusEvent, QPixmap, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -82,6 +82,9 @@ class ImagePreviewTests(unittest.TestCase):
     def test_selection_after_zoom_and_scroll_emits_original_pixels(self) -> None:
         self.wheel(600)
         self.preview.centerOn(800, 600)
+        QTest.mousePress(self.preview.viewport(), Qt.MouseButton.MiddleButton, pos=QPoint(300, 240))
+        QTest.mouseMove(self.preview.viewport(), QPoint(340, 260))
+        QTest.mouseRelease(self.preview.viewport(), Qt.MouseButton.MiddleButton, pos=QPoint(340, 260))
         start, end = QPoint(220, 160), QPoint(400, 300)
         first, last = self.preview.mapToScene(start), self.preview.mapToScene(end)
         expected = Roi(
@@ -136,6 +139,48 @@ class ImagePreviewTests(unittest.TestCase):
         QTest.mouseClick(self.preview.viewport(), Qt.MouseButton.RightButton)
         self.assertIsNone(self.preview._roi_item)
         self.assertEqual([None], self.changes)
+
+    def test_middle_drag_pans_without_changing_zoom_or_roi(self) -> None:
+        self.wheel(600)
+        self.preview.centerOn(800, 600)
+        viewport = self.preview.viewport()
+        start, end = QPoint(300, 240), QPoint(360, 280)
+        horizontal = self.preview.horizontalScrollBar().value()
+        vertical = self.preview.verticalScrollBar().value()
+        transform = self.preview.transform()
+        QTest.mousePress(viewport, Qt.MouseButton.MiddleButton, pos=start)
+        self.assertEqual(Qt.CursorShape.ClosedHandCursor, viewport.cursor().shape())
+        QTest.mouseMove(viewport, end)
+        self.wheel(120)
+        QTest.mouseRelease(viewport, Qt.MouseButton.MiddleButton, pos=end)
+        self.assertEqual(horizontal - 60, self.preview.horizontalScrollBar().value())
+        self.assertEqual(vertical - 40, self.preview.verticalScrollBar().value())
+        self.assertEqual(transform, self.preview.transform())
+        self.assertEqual(QRectF(400, 300, 200, 160), self.preview._roi_item.rect())
+        self.assertEqual([], self.changes)
+        self.assertIsNone(self.preview._pan_origin)
+        self.assertNotEqual(Qt.CursorShape.ClosedHandCursor, viewport.cursor().shape())
+        horizontal = self.preview.horizontalScrollBar().value()
+        QTest.mouseMove(viewport, QPoint(390, 290))
+        self.assertEqual(horizontal, self.preview.horizontalScrollBar().value())
+
+    def test_image_change_and_focus_loss_stop_middle_drag(self) -> None:
+        viewport = self.preview.viewport()
+        for reset in (
+            lambda: self.preview.set_image(self.path, self.roi),
+            lambda: QApplication.sendEvent(self.preview, QFocusEvent(QEvent.Type.FocusOut)),
+        ):
+            with self.subTest(reset=reset):
+                QTest.mousePress(viewport, Qt.MouseButton.MiddleButton, pos=QPoint(300, 240))
+                self.assertIsNotNone(self.preview._pan_origin)
+                reset()
+                self.assertIsNone(self.preview._pan_origin)
+                self.assertNotEqual(Qt.CursorShape.ClosedHandCursor, viewport.cursor().shape())
+                QTest.mouseRelease(viewport, Qt.MouseButton.MiddleButton, pos=QPoint(300, 240))
+        self.preview.set_image(None)
+        QTest.mouseClick(viewport, Qt.MouseButton.MiddleButton)
+        self.assertIsNone(self.preview._pan_origin)
+        self.assertEqual([], self.changes)
 
 
 if __name__ == "__main__":
