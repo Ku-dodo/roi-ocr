@@ -50,9 +50,10 @@ class ProcessImagesUseCase:
         results: list[OcrResult] = []
         succeeded = 0
         failed = 0
-        total = len(items)
+        total = sum(max(1, len(item.rois)) for item in items)
+        completed = 0
 
-        for index, item in enumerate(items, start=1):
+        for item in items:
             item.status = ImageStatus.PROCESSING
             item.error_message = ""
             item.extracted_text = ""
@@ -60,14 +61,14 @@ class ProcessImagesUseCase:
             item.results.clear()
             item.active_roi_id = None
             if progress_callback is not None:
-                progress_callback(index - 1, total, item)
+                progress_callback(completed, total, item)
 
             errors: list[str] = []
             for roi in item.rois or (None,):
                 ui_id = roi.tag if roi is not None else "full_image"
                 item.active_roi_id = ui_id
                 if progress_callback is not None:
-                    progress_callback(index - 1, total, item)
+                    progress_callback(completed, total, item)
                 try:
                     processed_image = self._image_processor.process(item.path, roi, item.scale_factor)
                     engine = self._engine_for_item(item) if self._engine_for_item else self._ocr_engine
@@ -90,8 +91,9 @@ class ProcessImagesUseCase:
                     )
                 item.results.append(result)
                 item.active_roi_id = None
+                completed += 1
                 if progress_callback is not None:
-                    progress_callback(index - 1, total, item)
+                    progress_callback(completed, total, item)
             results.extend(item.results)
             item.error_message = "\n".join(errors)
             item.extracted_text = "\n".join(
@@ -105,7 +107,7 @@ class ProcessImagesUseCase:
             else:
                 succeeded += 1
             if progress_callback is not None:
-                progress_callback(index, total, item)
+                progress_callback(completed, total, item)
 
         output_path = self._result_writer.write(results)
         return BatchProcessingSummary(output_path, succeeded, failed)

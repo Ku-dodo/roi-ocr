@@ -13,6 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -145,3 +146,31 @@ class FilePresetTests(unittest.TestCase):
         self.assertEqual(self.login, window._static_rois)
         self.assertEqual(self.menu, window._display_rois())
         self.assertEqual("menu_name", window._roi_table.item(0, 1).text())
+
+    def test_selecting_preset_before_adding_image_immediately_draws_gizmos(self):
+        window = self.window
+        window._clear_all()
+        window._apply_roi(())
+        window._reload_presets()
+        window._preset_combo.setCurrentIndex(window._preset_combo.findData("Menu_Scene"))
+        window._preset_combo.activated.emit(window._preset_combo.currentIndex())
+        path = self.directory / "new_image.png"
+        pixmap = QPixmap(400, 300)
+        pixmap.fill(Qt.GlobalColor.white)
+        self.assertTrue(pixmap.save(str(path)))
+        window._add_image_paths([path])
+        self.application.processEvents()
+        self.assertEqual(self.menu, window._static_rois)
+        self.assertEqual(self.menu, window._preview.rois)
+        self.assertEqual(1, len(window._preview._roi_items))
+        self.assertEqual(1, len(window._preview._handles))
+        self.assertEqual("menu_name", window._preview._labels[0].toolTip())
+        self.assertEqual("menu_name", window._roi_table.item(0, 1).text())
+
+    def test_refreshing_preset_list_does_not_replace_unsaved_default_roi(self):
+        window = self.window
+        edited = (replace(self.login[0], width=150),)
+        window._apply_roi(edited)
+        window._reload_presets("Menu_Scene")
+        self.assertEqual(edited, window._static_rois)
+        self.assertTrue(window._has_unsaved_rois)

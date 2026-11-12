@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
-    QProgressBar,
     QPushButton,
     QSplitter,
     QVBoxLayout,
@@ -46,6 +45,7 @@ from ocr_app.presentation.image_table_model import ImageTableModel
 from ocr_app.presentation.language_delegate import LanguageDelegate
 from ocr_app.presentation.searchable_combo_box import SearchableComboBox
 from ocr_app.presentation.settings_popover import SettingsPopover
+from ocr_app.presentation.smooth_progress_bar import SmoothProgressBar
 from ocr_app.presentation.worker import OcrWorker
 
 
@@ -219,6 +219,7 @@ class MainWindow(QMainWindow):
         preset_toolbar.addWidget(QLabel("기본 ROI 프리셋"))
         self._preset_combo = QComboBox()
         self._preset_combo.setMinimumContentsLength(12)
+        self._preset_combo.setToolTip("프리셋을 선택하면 기본 ROI에 바로 적용됩니다. 이미지 추가 전에도 선택할 수 있습니다.")
         preset_toolbar.addWidget(self._preset_combo, 1)
         self._preset_save_button = QPushButton("저장")
         self._preset_load_button = QPushButton("불러오기")
@@ -260,9 +261,7 @@ class MainWindow(QMainWindow):
         status_layout = QHBoxLayout(status_frame)
         status_layout.setContentsMargins(0, 0, 0, 0)
         self._status_label = QLabel("준비")
-        self._progress_bar = QProgressBar()
-        self._progress_bar.setRange(0, 1)
-        self._progress_bar.setValue(0)
+        self._progress_bar = SmoothProgressBar()
         self._progress_bar.setTextVisible(True)
         status_layout.addWidget(self._status_label, 1)
         status_layout.addWidget(self._progress_bar, 1)
@@ -283,6 +282,7 @@ class MainWindow(QMainWindow):
         self._roi_table.cellDoubleClicked.connect(self._roi_color_changed)
         self._preset_save_button.clicked.connect(self._save_preset)
         self._preset_load_button.clicked.connect(self._load_preset)
+        self._preset_combo.activated.connect(self._load_preset)
         self._preset_delete_button.clicked.connect(self._delete_preset)
         self._table.images_dropped.connect(self._add_image_paths)
         self._table.clicked.connect(self._edit_language_cell)
@@ -728,15 +728,13 @@ class MainWindow(QMainWindow):
         self._clear_previous_results()
 
         self._set_controls_enabled(False)
+        self._progress_bar.reset_progress(busy=requires_download)
         preprocess_state = self._preprocess_state_text()
         if requires_download:
-            self._progress_bar.setRange(0, 0)
             self._status_label.setText(
                 f"필요한 OCR 모델을 준비하는 중입니다... · {preprocess_state}"
             )
         else:
-            self._progress_bar.setRange(0, len(self._model.items))
-            self._progress_bar.setValue(0)
             self._status_label.setText(
                 f"EasyOCR 모델을 불러오는 중입니다... · {preprocess_state}"
             )
@@ -757,10 +755,11 @@ class MainWindow(QMainWindow):
 
     def _ocr_progress(self, completed: int, total: int, item: ImageItem) -> None:
         self._model.notify_item_updated(item)
-        self._progress_bar.setRange(0, total)
-        self._progress_bar.setValue(completed)
+        # Reserve the final percent until the CSV has been written successfully.
+        if completed > 0 or self._progress_bar.maximum() != 0:
+            self._progress_bar.set_progress(min(0.99, completed / max(1, total)))
         self._status_label.setText(
-            f"{item.path.name}: {item.status.value} ({completed}/{total}) · "
+            f"{item.path.name}: {item.status.value} · 영역 {completed}/{total} · "
             f"{self._preprocess_state_text()}"
         )
         if item is self._current_item():
@@ -769,7 +768,7 @@ class MainWindow(QMainWindow):
     def _ocr_finished(self, summary: BatchProcessingSummary) -> None:
         self._set_controls_enabled(True)
         self._worker = None
-        self._progress_bar.setValue(self._progress_bar.maximum())
+        self._progress_bar.set_progress(1.0)
         self._status_label.setText(
             f"완료 {summary.succeeded}개, 실패 {summary.failed}개 — "
             f"{summary.output_path.name} · {self._preprocess_state_text()}"
@@ -788,8 +787,7 @@ class MainWindow(QMainWindow):
     def _ocr_failed(self, message: str) -> None:
         self._set_controls_enabled(True)
         self._worker = None
-        self._progress_bar.setRange(0, 1)
-        self._progress_bar.setValue(0)
+        self._progress_bar.reset_progress()
         self._status_label.setText("OCR 실행에 실패했습니다.")
         for item in self._model.items:
             if item.status == ImageStatus.PROCESSING:

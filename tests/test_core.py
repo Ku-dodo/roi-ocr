@@ -106,6 +106,18 @@ class UseCaseTests(unittest.TestCase):
         self.assertIn(("button", ["name"]), states)
         self.assertEqual((None, ["name", "button"]), states[-1])
 
+    def test_progress_counts_regions_across_images_including_failed_regions(self) -> None:
+        items = [ImageItem(Path("good.png"), rois=(Roi(0, 0, 10, 10, "name"), Roi(20, 0, 10, 10, "button"))),
+                 ImageItem(Path("bad.png"), rois=(Roi(0, 0, 10, 10, "name"),))]
+        progress = []
+        use_case = ProcessImagesUseCase(FakeImageProcessor(), FakeOcrEngine(), CapturingWriter(Path("result.csv")))
+        summary = use_case.execute(items, lambda completed, total, item: progress.append((completed, total)))
+        self.assertEqual({3}, {total for _, total in progress})
+        self.assertEqual({0, 1, 2, 3}, {completed for completed, _ in progress})
+        self.assertEqual(sorted(progress), progress)
+        self.assertEqual((3, 3), progress[-1])
+        self.assertEqual((1, 1), (summary.succeeded, summary.failed))
+
     def test_invalid_roi_ids_are_rejected_before_export(self) -> None:
         writer = CapturingWriter(Path("result.csv"))
         use_case = ProcessImagesUseCase(FakeImageProcessor(), FakeOcrEngine(), writer)

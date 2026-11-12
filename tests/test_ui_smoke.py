@@ -23,6 +23,7 @@ from ocr_app.domain.models import ImageStatus, OcrResult, Roi
 from ocr_app.infrastructure.roi_preset_store import RoiPresetStore
 from ocr_app.presentation.image_drop_table import ImageDropTable
 from ocr_app.presentation.main_window import MainWindow
+from ocr_app.application.process_images import BatchProcessingSummary
 
 
 class MainWindowSmokeTests(unittest.TestCase):
@@ -33,6 +34,31 @@ class MainWindowSmokeTests(unittest.TestCase):
     def close_window(self, window):
         with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Discard):
             window.close()
+
+    def test_progress_animates_roi_counts_and_completes_only_after_csv_save(self):
+        window = MainWindow()
+        self.addCleanup(self.close_window, window)
+        window._model.add_paths([Path("sample.png")])
+        item = window._model.items[0]
+        item.status = ImageStatus.PROCESSING
+        bar = window._progress_bar
+        bar.reset_progress(busy=True)
+        window._ocr_progress(0, 2, item)
+        self.assertEqual(0, bar.maximum())
+        window._ocr_progress(1, 2, item)
+        bar._animation.setCurrentTime(bar.DURATION_MS)
+        self.assertEqual(5000, bar.value())
+        self.assertIn("영역 1/2", window._status_label.text())
+        window._ocr_progress(2, 2, item)
+        bar._animation.setCurrentTime(bar.DURATION_MS)
+        self.assertEqual(9900, bar.value())
+        with patch.object(QMessageBox, "information"):
+            window._ocr_finished(BatchProcessingSummary(Path("result.csv"), 1, 0))
+        bar._animation.setCurrentTime(bar.DURATION_MS)
+        self.assertEqual(10000, bar.value())
+        with patch.object(QMessageBox, "critical"):
+            window._ocr_failed("write failed")
+        self.assertEqual(0, bar.value())
 
     def test_close_without_roi_changes_does_not_prompt(self):
         window = MainWindow()
