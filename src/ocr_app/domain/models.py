@@ -49,6 +49,8 @@ class ImageItem:
     language_code: str | None = None
     results: list[OcrResult] = field(default_factory=list)
     active_roi_id: str | None = None
+    roi_preset_name: str | None = None
+    roi_preset_snapshot: tuple[Roi, ...] = ()
 
     def __post_init__(self) -> None:
         self.path = self.path.resolve()

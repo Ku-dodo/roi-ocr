@@ -30,10 +30,128 @@ class MainWindowSmokeTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.application = QApplication.instance() or QApplication([])
 
+    def close_window(self, window):
+        with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Discard):
+            window.close()
+
+    def test_close_without_roi_changes_does_not_prompt(self):
+        window = MainWindow()
+        self.addCleanup(self.close_window, window)
+        with patch.object(QMessageBox, "warning") as warning:
+            self.assertTrue(window.close())
+        warning.assert_not_called()
+
+    def test_close_cancel_and_discard_unsaved_roi_changes(self):
+        window = MainWindow()
+        self.addCleanup(self.close_window, window)
+        roi = Roi(10, 20, 100, 40, "user_name")
+        window._apply_roi((roi,))
+        window.show()
+        with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Cancel) as warning:
+            self.assertFalse(window.close())
+        self.assertEqual(QMessageBox.StandardButton.Cancel, warning.call_args.args[4])
+        self.assertTrue(window.isVisible())
+        self.assertEqual((roi,), window._static_rois)
+        with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Discard):
+            self.assertTrue(window.close())
+
+    def test_close_saves_roi_preset_before_exiting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = MainWindow()
+            self.addCleanup(self.close_window, window)
+            window._preset_store = RoiPresetStore(Path(directory) / "presets.json")
+            roi = Roi(10, 20, 100, 40, "user_name")
+            window._apply_roi((roi,))
+            with (
+                patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Save),
+                patch("ocr_app.presentation.main_window.QInputDialog.getText", return_value=("Login_Scene", True)),
+            ):
+                self.assertTrue(window.close())
+            self.assertEqual((roi,), window._preset_store.load("Login_Scene"))
+            self.assertFalse(window._has_unsaved_rois)
+
+    def test_cancelled_or_failed_save_keeps_window_open_and_roi_dirty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = MainWindow()
+            self.addCleanup(self.close_window, window)
+            window._preset_store = RoiPresetStore(Path(directory) / "presets.json")
+            roi = Roi(10, 20, 100, 40, "user_name")
+            window._apply_roi((roi,))
+            window.show()
+            with (
+                patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Save),
+                patch("ocr_app.presentation.main_window.QInputDialog.getText", return_value=("", False)),
+            ):
+                self.assertFalse(window.close())
+            with (
+                patch.object(QMessageBox, "warning", side_effect=[QMessageBox.StandardButton.Save, QMessageBox.StandardButton.Ok]),
+                patch("ocr_app.presentation.main_window.QInputDialog.getText", return_value=("Login_Scene", True)),
+                patch.object(window._preset_store, "save", side_effect=OSError("write failed")),
+            ):
+                self.assertFalse(window.close())
+            self.assertTrue(window.isVisible())
+            self.assertTrue(window._has_unsaved_rois)
+            self.assertEqual((roi,), window._static_rois)
+
+    def test_loading_or_saving_resets_dirty_baseline_but_edits_and_deletion_do_not(self):
+        from dataclasses import replace
+        with tempfile.TemporaryDirectory() as directory:
+            window = MainWindow()
+            self.addCleanup(self.close_window, window)
+            window._preset_store = RoiPresetStore(Path(directory) / "presets.json")
+            roi = Roi(10, 20, 100, 40, "user_name")
+            window._preset_store.save("Login_Scene", (roi,))
+            window._reload_presets("Login_Scene")
+            window._load_preset()
+            self.assertFalse(window._has_unsaved_rois)
+            for updated in (replace(roi, x=20), replace(roi, width=110), replace(roi, tag="name"),
+                            replace(roi, color="#ffb347")):
+                window._apply_roi((updated,))
+                self.assertTrue(window._has_unsaved_rois)
+                window._apply_roi((roi,))
+                self.assertFalse(window._has_unsaved_rois)
+            window._apply_roi(())
+            self.assertTrue(window._has_unsaved_rois)
+            window._apply_roi((roi,))
+            with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+                window._delete_preset()
+            self.assertTrue(window._has_unsaved_rois)
+
+    def test_clearing_images_preserves_unsaved_roi_definitions(self):
+        window = MainWindow()
+        self.addCleanup(self.close_window, window)
+        window._model.add_paths([Path("sample.png")])
+        roi = Roi(10, 20, 100, 40, "user_name")
+        window._apply_roi((roi,))
+        window._clear_all()
+        self.assertEqual((roi,), window._static_rois)
+        self.assertEqual((roi,), window._preview.rois)
+        self.assertTrue(window._has_unsaved_rois)
+
+    def test_pending_tag_edit_is_committed_before_close_warning(self):
+        from PySide6.QtWidgets import QLineEdit
+        window = MainWindow()
+        self.addCleanup(self.close_window, window)
+        roi = Roi(10, 20, 100, 40, "user_name")
+        window._apply_roi((roi,))
+        window._saved_rois = (roi,)
+        window.show()
+        self.application.processEvents()
+        window._roi_table.editItem(window._roi_table.item(0, 1))
+        editor = window._roi_table.findChild(QLineEdit)
+        self.assertIsNotNone(editor)
+        editor.setFocus()
+        editor.selectAll()
+        QTest.keyClicks(editor, "display_name")
+        with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Cancel) as warning:
+            self.assertFalse(window.close())
+        warning.assert_called_once()
+        self.assertEqual("display_name", window._static_rois[0].tag)
+
     def test_main_window_can_be_constructed(self) -> None:
         window = MainWindow()
         self.assertEqual("이미지 OCR 도구", window.windowTitle())
-        self.assertEqual(5, window._model.columnCount())
+        self.assertEqual(6, window._model.columnCount())
         self.assertEqual(86, window._language_combo.count())
         self.assertGreaterEqual(window._language_combo.findData("ko"), 0)
         self.assertTrue(window._language_combo.isEditable())
@@ -50,11 +168,11 @@ class MainWindowSmokeTests(unittest.TestCase):
             [1, 2, 4],
             [window._scale_combo.itemData(index) for index in range(window._scale_combo.count())],
         )
-        window.close()
+        self.close_window(window)
 
     def test_roi_table_shows_selected_image_progress_results_and_errors(self):
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         self.assertFalse(hasattr(window, "_result_text"))
         self.assertEqual(5, window._roi_table.columnCount())
         window._model.add_paths([Path("ko.png"), Path("en.png")])
@@ -84,14 +202,14 @@ class MainWindowSmokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "presets.json"
             window = MainWindow()
-            self.addCleanup(window.close)
+            self.addCleanup(self.close_window, window)
             window._preset_store = RoiPresetStore(path)
             rois = (Roi(0, 0, 10, 10, "user_name"), Roi(20, 0, 10, 10, "button", "#ffb347"))
             window._apply_roi(rois)
             with patch("ocr_app.presentation.main_window.QInputDialog.getText", return_value=("Login_Scene", True)):
                 window._preset_save_button.click()
             restored = MainWindow()
-            self.addCleanup(restored.close)
+            self.addCleanup(self.close_window, restored)
             restored._preset_store = RoiPresetStore(path)
             restored._reload_presets("Login_Scene")
             restored._preset_load_button.click()
@@ -108,7 +226,7 @@ class MainWindowSmokeTests(unittest.TestCase):
 
     def test_default_language_changes_only_inherited_files(self) -> None:
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         window._model.add_paths([Path("default.png"), Path("explicit.png")])
         window._model.set_language_for_rows([1], "ko")
         window._language_combo.setCurrentIndex(window._language_combo.findData("ch_sim"))
@@ -122,7 +240,7 @@ class MainWindowSmokeTests(unittest.TestCase):
         from ocr_app.presentation.searchable_combo_box import SearchableComboBox
 
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         window._model.add_paths([Path("first.png"), Path("second.png")])
         window.show()
         window._table.selectAll()
@@ -143,7 +261,7 @@ class MainWindowSmokeTests(unittest.TestCase):
             (models / "craft_mlt_25k.pth").touch()
             (models / "korean_g2.pth").touch()
             window = MainWindow()
-            self.addCleanup(window.close)
+            self.addCleanup(self.close_window, window)
             window._language_combo.setCurrentIndex(window._language_combo.findData("ko"))
             window._model.add_paths([Path("chinese.png")])
             window._model.set_language_for_rows([0], "ch_sim")
@@ -161,7 +279,7 @@ class MainWindowSmokeTests(unittest.TestCase):
         from ocr_app.presentation.searchable_combo_box import SearchableComboBox
 
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         window._model.add_paths([Path("first.png")])
         window._model.set_language_for_rows([0], "ja")
         window.show()
@@ -179,7 +297,7 @@ class MainWindowSmokeTests(unittest.TestCase):
         from ocr_app.presentation.searchable_combo_box import SearchableComboBox
 
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         window._model.add_paths([Path("first.png")])
         window.show()
         self.application.processEvents()
@@ -202,7 +320,7 @@ class MainWindowSmokeTests(unittest.TestCase):
         from ocr_app.presentation.searchable_combo_box import SearchableComboBox
 
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         window._model.add_paths([Path("first.png"), Path("second.png")])
         window._model.set_language_for_rows([1], "ch_sim")
         window.show()
@@ -227,11 +345,11 @@ class MainWindowSmokeTests(unittest.TestCase):
         combo.setEditText("지원하지 않는 언어")
         combo.lineEdit().editingFinished.emit()
         self.assertEqual("ko", combo.currentData())
-        window.close()
+        self.close_window(window)
 
     def test_settings_hover_stays_open_when_entering_panel_and_closes_on_leave(self) -> None:
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         window.show()
         self.application.processEvents()
         popup = window._settings_popup
@@ -257,7 +375,7 @@ class MainWindowSmokeTests(unittest.TestCase):
 
     def test_settings_click_escape_and_outside_click(self) -> None:
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         window.show()
         self.application.processEvents()
         QTest.mouseClick(window._settings_button, Qt.MouseButton.LeftButton)
@@ -270,7 +388,7 @@ class MainWindowSmokeTests(unittest.TestCase):
 
     def test_settings_remain_open_while_scale_dropdown_is_used(self) -> None:
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         window.show()
         self.application.processEvents()
         window._model.add_paths([Path("first.png"), Path("second.png")])
@@ -292,7 +410,7 @@ class MainWindowSmokeTests(unittest.TestCase):
 
     def test_settings_close_and_cannot_reopen_during_ocr(self) -> None:
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         window.show()
         self.application.processEvents()
         window._settings_button.click()
@@ -317,7 +435,7 @@ class MainWindowSmokeTests(unittest.TestCase):
         window._model_download_checkbox.setChecked(True)
         self.assertIn("모델 자동 다운로드", window._status_label.text())
         window._language_combo.setCurrentIndex(window._language_combo.findData("ko"))
-        window.close()
+        self.close_window(window)
 
     def test_ocr_does_not_start_when_models_are_missing_and_download_is_off(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -338,7 +456,7 @@ class MainWindowSmokeTests(unittest.TestCase):
             warning.assert_called_once()
             window._thread_pool.start.assert_not_called()
             self.assertIsNone(window._worker)
-            window.close()
+            self.close_window(window)
 
     def test_ocr_worker_receives_download_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -356,7 +474,7 @@ class MainWindowSmokeTests(unittest.TestCase):
 
             window._thread_pool.start.assert_called_once_with(window._worker)
             self.assertTrue(window._worker._allow_model_download)
-            window.close()
+            self.close_window(window)
 
     def test_previous_result_is_cleared_before_rerun(self) -> None:
         window = MainWindow()
@@ -373,9 +491,9 @@ class MainWindowSmokeTests(unittest.TestCase):
         self.assertIsNone(item.confidence)
         self.assertEqual("", item.error_message)
         self.assertEqual(ImageStatus.READY, item.status)
-        window.close()
+        self.close_window(window)
 
-    def test_static_roi_is_assigned_to_every_image_for_ocr(self) -> None:
+    def test_default_rois_are_assigned_to_inherited_images_for_ocr(self) -> None:
         window = MainWindow()
         window._model.add_paths([Path("first.png"), Path("second.png")])
         static_roi = Roi(10, 20, 100, 50)
@@ -383,18 +501,19 @@ class MainWindowSmokeTests(unittest.TestCase):
         window._apply_roi((static_roi,))
 
         self.assertTrue(all(item.rois == () for item in window._model.items))
-        window._assign_static_roi_to_items()
+        window._assign_rois_to_items()
         self.assertTrue(
             all(item.rois == (static_roi,) for item in window._model.items)
         )
-        window._clear_roi_button.click()
+        with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Yes):
+            window._clear_roi_button.click()
         self.assertEqual((), window._static_rois)
-        window.close()
+        self.close_window(window)
 
     def test_tags_edit_and_reject_duplicates_and_clear_all(self) -> None:
         from PySide6.QtGui import QColor
         window = MainWindow()
-        self.addCleanup(window.close)
+        self.addCleanup(self.close_window, window)
         self.assertFalse(hasattr(window, "_include_extension_checkbox"))
         rois = (Roi(0, 0, 10, 10, "user_name"), Roi(20, 20, 10, 10, "password", "#ffb347"))
         window._apply_roi(rois)
@@ -413,9 +532,92 @@ class MainWindowSmokeTests(unittest.TestCase):
         self.assertFalse(window._preview.isEnabled())
         self.assertFalse(window._roi_table.isEnabled())
         window._set_controls_enabled(True)
-        window._clear_roi_button.click()
+        with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Yes):
+            window._clear_roi_button.click()
         self.assertEqual((), window._static_rois)
         self.assertEqual(0, window._roi_table.rowCount())
+
+    def test_dragged_roi_updates_table_preserves_results_and_can_be_saved(self):
+        from PySide6.QtGui import QPixmap
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.png"
+            pixmap = QPixmap(1000, 800)
+            pixmap.fill(Qt.GlobalColor.white)
+            pixmap.save(str(path))
+            window = MainWindow()
+            self.addCleanup(self.close_window, window)
+            window.show()
+            window._add_image_paths([path])
+            original = Roi(200, 200, 200, 100, "user_name")
+            window._preview.set_rois((original,))
+            window._apply_roi((original,))
+            self.application.processEvents()
+            window._model.items[0].results = [OcrResult("user_name", "old result", 0.9)]
+            preview = window._preview
+            start = preview.mapFromScene(QPointF(300, 250))
+            end = start + QPoint(30, 25)
+            QTest.mousePress(preview.viewport(), Qt.MouseButton.LeftButton, pos=start)
+            QTest.mouseMove(preview.viewport(), end)
+            QTest.mouseRelease(preview.viewport(), Qt.MouseButton.LeftButton, pos=end)
+            moved = window._static_rois[0]
+            self.assertNotEqual(original, moved)
+            self.assertEqual((moved,), preview.rois)
+            self.assertEqual(f"{moved.x}, {moved.y}, {moved.width}, {moved.height}",
+                             window._roi_table.item(0, 2).text())
+            self.assertEqual("완료", window._roi_table.item(0, 3).text())
+            self.assertEqual("old result", window._roi_table.item(0, 4).text())
+            self.assertEqual([OcrResult("user_name", "old result", 0.9)], window._model.items[0].results)
+            window._preset_store = RoiPresetStore(Path(directory) / "presets.json")
+            with patch("ocr_app.presentation.main_window.QInputDialog.getText", return_value=("Moved", True)):
+                window._save_preset()
+            self.assertEqual((moved,), window._preset_store.load("Moved"))
+
+    def test_clear_all_rois_requires_confirmation_and_preserves_previous_results(self):
+        window = MainWindow()
+        self.addCleanup(self.close_window, window)
+        roi = Roi(10, 10, 100, 40, "user_name")
+        window._model.add_paths([Path("sample.png")])
+        window._preview.set_rois((roi,))
+        window._apply_roi((roi,))
+        result = OcrResult("user_name", "previous result", 0.9)
+        window._model.items[0].results = [result]
+        with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.No) as warning:
+            window._clear_roi_button.click()
+        self.assertEqual(QMessageBox.StandardButton.No, warning.call_args.args[4])
+        self.assertEqual((roi,), window._static_rois)
+        self.assertEqual((roi,), window._preview.rois)
+        with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Yes):
+            window._clear_roi_button.click()
+        self.assertEqual((), window._static_rois)
+        self.assertEqual([result], window._model.items[0].results)
+
+    def test_resizing_preserves_all_images_results_until_ocr_is_run_again(self):
+        window = MainWindow()
+        self.addCleanup(self.close_window, window)
+        roi = Roi(10, 10, 100, 40, "user_name")
+        resized = Roi(10, 10, 150, 60, "user_name")
+        window._model.add_paths([Path("ko.png"), Path("en.png")])
+        window._apply_roi((roi,))
+        for item, text, code in zip(window._model.items, ("이전 결과", "old result"), ("ko", "en")):
+            item.results = [OcrResult("user_name", text, 0.9, code)]
+            item.extracted_text = text
+            item.confidence = 0.9
+            item.status = ImageStatus.COMPLETED
+        previous = [list(item.results) for item in window._model.items]
+        window._apply_roi((resized,))
+        self.assertEqual(previous, [item.results for item in window._model.items])
+        self.assertTrue(all(item.confidence == 0.9 for item in window._model.items))
+        for row, expected in enumerate(("이전 결과", "old result")):
+            window._table.setCurrentIndex(window._model.index(row, 0))
+            self.assertEqual(expected, window._roi_table.item(0, 4).text())
+            self.assertEqual("완료", window._roi_table.item(0, 3).text())
+        window._thread_pool = Mock()
+        window._model_download_checkbox.setChecked(True)
+        window._run_ocr()
+        window._thread_pool.start.assert_called_once()
+        self.assertTrue(all(item.rois == (resized,) for item in window._model.items))
+        self.assertTrue(all(item.results == [] and item.extracted_text == "" for item in window._model.items))
+        self.assertEqual("대기", window._roi_table.item(0, 3).text())
 
     def test_drop_data_accepts_only_existing_local_images(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -463,7 +665,7 @@ class MainWindowSmokeTests(unittest.TestCase):
             self.assertEqual(2, len(window._model.items))
             self.assertEqual(0, window._table.currentIndex().row())
             self.assertIn("2개", window._status_label.text())
-            window.close()
+            self.close_window(window)
 
 
 if __name__ == "__main__":

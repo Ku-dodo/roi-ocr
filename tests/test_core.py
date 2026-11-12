@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
+import runpy
 import sys
 import tempfile
 import unittest
@@ -64,6 +66,12 @@ class DomainTests(unittest.TestCase):
                 self.assertEqual(expected, result.status)
 
     def test_language_catalog_matches_easyocr_172(self) -> None:
+        spec = importlib.util.find_spec("easyocr")
+        config = runpy.run_path(str(Path(spec.origin).parent / "config.py"))
+        self.assertEqual(set(config["all_lang_list"]), {language.code for language in SUPPORTED_LANGUAGES})
+        model_filenames = {model["filename"] for generation in config["recognition_models"].values()
+                           for model in generation.values()}
+        self.assertTrue(all(language.model_filename in model_filenames for language in SUPPORTED_LANGUAGES))
         self.assertEqual(86, len(SUPPORTED_LANGUAGES))
         self.assertEqual(86, len({language.code for language in SUPPORTED_LANGUAGES}))
         self.assertEqual("korean_g2.pth", get_language("ko").model_filename)

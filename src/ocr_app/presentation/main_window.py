@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -57,12 +58,14 @@ class MainWindow(QMainWindow):
         self._worker: OcrWorker | None = None
         self._active_screenshot_preprocessing = False
         self._static_rois: tuple[Roi, ...] = ()
+        self._saved_rois: tuple[Roi, ...] = ()
+        self._saved_preset_name: str | None = None
         self._model = ImageTableModel()
         self._settings = QSettings()
         self._preset_store = RoiPresetStore(application_directory() / "presets" / "roi_presets.json")
 
         self.setWindowTitle("이미지 OCR 도구")
-        self.resize(1180, 720)
+        self.resize(1400, 780)
         self.setMinimumSize(900, 580)
         self._build_ui()
         self._connect_signals()
@@ -186,7 +189,7 @@ class MainWindow(QMainWindow):
         self._table.verticalHeader().setDefaultSectionSize(38)
         self._table.horizontalHeader().setHighlightSections(False)
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in (1, 2, 3, 4):
+        for column in range(1, self._model.columnCount()):
             self._table.horizontalHeader().setSectionResizeMode(
                 column, QHeaderView.ResizeMode.ResizeToContents
             )
@@ -197,6 +200,7 @@ class MainWindow(QMainWindow):
             ImageTableModel.LANGUAGE_COLUMN,
             max(190, self._table.fontMetrics().horizontalAdvance("중국어(번체) (ch_tra)") + 48),
         )
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         file_layout.addWidget(self._table)
 
         file_footer = QHBoxLayout()
@@ -212,13 +216,15 @@ class MainWindow(QMainWindow):
         preview_layout = QVBoxLayout(preview_group)
         preview_layout.setContentsMargins(10, 16, 10, 10)
         preset_toolbar = QHBoxLayout()
-        preset_toolbar.addWidget(QLabel("ROI 프리셋"))
+        preset_toolbar.addWidget(QLabel("기본 ROI 프리셋"))
         self._preset_combo = QComboBox()
         self._preset_combo.setMinimumContentsLength(12)
         preset_toolbar.addWidget(self._preset_combo, 1)
         self._preset_save_button = QPushButton("저장")
         self._preset_load_button = QPushButton("불러오기")
         self._preset_delete_button = QPushButton("삭제")
+        self._preset_load_button.setToolTip("선택한 프리셋을 기본 ROI로 적용합니다. 파일별로 지정한 ROI는 유지됩니다.")
+        self._preset_save_button.setToolTip("현재 표시된 ROI를 프리셋으로 저장합니다.")
         for button in (self._preset_save_button, self._preset_load_button, self._preset_delete_button):
             preset_toolbar.addWidget(button)
         preview_layout.addLayout(preset_toolbar)
@@ -248,7 +254,7 @@ class MainWindow(QMainWindow):
         preview_layout.addWidget(self._roi_label)
 
         splitter.addWidget(preview_group)
-        splitter.setSizes((500, 660))
+        splitter.setSizes((650, 750))
 
         status_frame = QFrame()
         status_layout = QHBoxLayout(status_frame)
@@ -266,7 +272,7 @@ class MainWindow(QMainWindow):
         self._add_button.clicked.connect(self._add_images)
         self._remove_button.clicked.connect(self._remove_selected)
         self._clear_button.clicked.connect(self._clear_all)
-        self._clear_roi_button.clicked.connect(self._preview.clear_roi)
+        self._clear_roi_button.clicked.connect(self._confirm_clear_rois)
         self._run_button.clicked.connect(self._run_ocr)
         self._scale_combo.currentIndexChanged.connect(self._apply_scale)
         self._preprocess_checkbox.toggled.connect(self._preprocess_toggled)
@@ -280,6 +286,7 @@ class MainWindow(QMainWindow):
         self._preset_delete_button.clicked.connect(self._delete_preset)
         self._table.images_dropped.connect(self._add_image_paths)
         self._table.clicked.connect(self._edit_language_cell)
+        self._table.customContextMenuRequested.connect(self._show_file_context_menu)
         self._file_language_button.clicked.connect(self._edit_selected_language)
 
         selection_model = self._table.selectionModel()
@@ -321,20 +328,22 @@ class MainWindow(QMainWindow):
 
     def _update_after_list_change(self) -> None:
         if not self._model.items:
-            self._static_rois = ()
             self._refresh_roi_table()
             self._preview.set_image(None)
-            self._roi_label.setText("ROI: 왼쪽 드래그로 영역을 추가하세요.")
+            self._preview.set_rois(self._static_rois)
+            self._roi_label.setText(f"ROI {len(self._static_rois)}개 · 이미지를 추가하면 다시 적용됩니다.")
         self._update_footer()
 
     def _current_image_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
         item = self._item_at(current.row()) if current.isValid() else None
         if item is None:
             self._preview.set_image(None)
-            self._update_roi_results()
+            self._preview.set_rois(self._static_rois)
+            self._refresh_roi_table()
             return
 
-        self._preview.set_image(item.path, self._static_rois)
+        self._preview.set_image(item.path, self._effective_rois(item))
+        self._refresh_roi_table()
         self._scale_combo.blockSignals(True)
         scale_index = self._scale_combo.findData(item.scale_factor)
         self._scale_combo.setCurrentIndex(max(0, scale_index))
@@ -356,26 +365,126 @@ class MainWindow(QMainWindow):
     def _edit_language_cell(self, index: QModelIndex) -> None:
         if index.column() == ImageTableModel.LANGUAGE_COLUMN:
             self._table.edit(index)
+        elif index.column() == ImageTableModel.ROI_COLUMN:
+            rows = [row.row() for row in self._table.selectionModel().selectedRows()]
+            menu = self._build_roi_menu(rows or [index.row()])
+            menu.exec(self._table.viewport().mapToGlobal(self._table.visualRect(index).bottomLeft()))
+            menu.deleteLater()
 
     def _edit_selected_language(self) -> None:
         rows = self._table.selectionModel().selectedRows()
         if rows:
             self._table.edit(self._model.index(rows[0].row(), ImageTableModel.LANGUAGE_COLUMN))
 
-    def _apply_roi(self, rois: tuple[Roi, ...]) -> None:
-        changed = tuple(replace(roi, color="") for roi in self._static_rois) != tuple(
-            replace(roi, color="") for roi in rois
-        )
-        self._static_rois = tuple(rois)
+    def _build_roi_menu(self, rows: list[int], parent=None) -> QMenu:
+        menu = QMenu("ROI 변경", parent or self)
+        items = [self._model.items[row] for row in rows if 0 <= row < len(self._model.items)]
+        try:
+            names = self._preset_store.names()
+        except (OSError, ValueError) as error:
+            names = []
+            failed = menu.addAction(f"프리셋 읽기 실패: {error}")
+            failed.setEnabled(False)
+        for name in [None, *names]:
+            action = menu.addAction(name if name is not None else "기본 ROI 사용")
+            action.setData(name)
+            action.setCheckable(True)
+            action.setChecked(bool(items) and all(item.roi_preset_name == name for item in items))
+            action.triggered.connect(lambda checked=False, value=name: self._apply_file_preset(rows, value))
+        if not names:
+            empty = menu.addAction("저장된 프리셋 없음")
+            empty.setEnabled(False)
+        return menu
+
+    def _build_file_context_menu(self, rows: list[int]) -> QMenu:
+        menu = QMenu(self)
+        menu.addMenu(self._build_roi_menu(rows, menu))
+        languages = menu.addMenu("언어 변경")
+        items = [self._model.items[row] for row in rows if 0 <= row < len(self._model.items)]
+        for code, label in [(None, "기본 언어 사용"), *[(lang.code, lang.display_name) for lang in SUPPORTED_LANGUAGES]]:
+            action = languages.addAction(label)
+            action.setData(code)
+            action.setCheckable(True)
+            action.setChecked(bool(items) and all(item.language_code == code for item in items))
+            action.triggered.connect(lambda checked=False, value=code: self._model.set_language_for_rows(rows, value))
+        return menu
+
+    def _show_file_context_menu(self, position) -> None:
+        if not self._table.isEnabled():
+            return
+        index = self._table.indexAt(position)
+        if index.isValid() and not self._table.selectionModel().isRowSelected(index.row(), QModelIndex()):
+            self._table.selectRow(index.row())
+        rows = [index.row() for index in self._table.selectionModel().selectedRows()]
+        if not rows:
+            return
+        menu = self._build_file_context_menu(rows)
+        menu.exec(self._table.viewport().mapToGlobal(position))
+        menu.deleteLater()
+
+    def _apply_file_preset(self, rows: list[int], name: str | None) -> None:
+        try:
+            rois = self._preset_store.load(name) if name is not None else ()
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "ROI 프리셋 적용 실패", str(error))
+            return
+        for row in set(rows):
+            item = self._item_at(row)
+            if item is not None:
+                item.roi_preset_name = name
+                item.rois = rois
+                item.roi_preset_snapshot = rois
+                self._model.notify_item_updated(item)
+        current = self._current_item()
+        if current is not None:
+            self._preview.set_image(current.path, self._effective_rois(current))
         self._refresh_roi_table()
-        if changed:
-            self._clear_previous_results()
-        self._roi_label.setText(f"ROI {len(rois)}개 · 모든 이미지에 동일하게 적용 · 내부 우클릭으로 삭제")
+        if current is not None:
+            self._show_item_details(current)
+
+    def _apply_roi(self, rois: tuple[Roi, ...]) -> None:
+        item = self._current_item()
+        if item is not None and item.roi_preset_name is not None:
+            item.rois = tuple(rois)
+            self._model.notify_item_updated(item)
+        else:
+            self._static_rois = tuple(rois)
+            self._update_default_roi_label()
+        self._refresh_roi_table()
+        source = item.roi_preset_name if item is not None and item.roi_preset_name is not None else "기본 ROI"
+        self._roi_label.setText(f"ROI {len(rois)}개 · {source} · 내부 우클릭으로 삭제")
+
+    def _effective_rois(self, item: ImageItem | None) -> tuple[Roi, ...]:
+        return item.rois if item is not None and item.roi_preset_name is not None else self._static_rois
+
+    def _display_rois(self) -> tuple[Roi, ...]:
+        return self._effective_rois(self._current_item())
+
+    def _update_default_roi_label(self) -> None:
+        label = "기본 ROI 사용"
+        if self._saved_preset_name:
+            label = f"기본 · {self._saved_preset_name}"
+        if self._static_rois != self._saved_rois:
+            label += " *"
+        self._model.set_default_roi_label(label)
+
+    def _confirm_clear_rois(self) -> None:
+        if not self._display_rois():
+            return
+        answer = QMessageBox.warning(
+            self,
+            "ROI 전체 삭제",
+            "현재 표시된 ROI 영역을 모두 삭제하시겠습니까?\n저장한 프리셋과 이전 OCR 결과는 유지됩니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._preview.clear_roi()
 
     def _refresh_roi_table(self) -> None:
         self._roi_table.blockSignals(True)
-        self._roi_table.setRowCount(len(self._static_rois))
-        for row, roi in enumerate(self._static_rois):
+        self._roi_table.setRowCount(len(self._display_rois()))
+        for row, roi in enumerate(self._display_rois()):
             swatch = QTableWidgetItem("●")
             swatch.setForeground(QColor(roi.color))
             swatch.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
@@ -391,7 +500,7 @@ class MainWindow(QMainWindow):
         image = self._current_item()
         results = {result.ui_id: result for result in image.results} if image else {}
         self._roi_table.blockSignals(True)
-        for row, roi in enumerate(self._static_rois):
+        for row, roi in enumerate(self._display_rois()):
             result = results.get(roi.tag)
             text, tooltip, color = "", "", "#aeb4bb"
             if result is not None:
@@ -420,31 +529,33 @@ class MainWindow(QMainWindow):
         self._roi_table.blockSignals(False)
 
     def _roi_tag_changed(self, row: int, column: int) -> None:
-        if column != 1 or not 0 <= row < len(self._static_rois):
+        displayed = self._display_rois()
+        if column != 1 or not 0 <= row < len(displayed):
             return
         tag = self._roi_table.item(row, column).text().strip()
-        if not tag or any(r.tag == tag for i, r in enumerate(self._static_rois) if i != row):
+        if not tag or any(r.tag == tag for i, r in enumerate(displayed) if i != row):
             QMessageBox.warning(self, "UI ID 확인", "Tag는 비어 있을 수 없으며 다른 ROI와 중복될 수 없습니다.")
             self._refresh_roi_table()
             return
-        rois = list(self._static_rois)
+        rois = list(displayed)
         rois[row] = replace(rois[row], tag=tag)
         self._preview.set_rois(tuple(rois))
         self._apply_roi(tuple(rois))
 
     def _roi_color_changed(self, row: int, column: int) -> None:
-        if column != 0 or not 0 <= row < len(self._static_rois):
+        displayed = self._display_rois()
+        if column != 0 or not 0 <= row < len(displayed):
             return
-        color = QColorDialog.getColor(QColor(self._static_rois[row].color), self, "ROI 색상")
+        color = QColorDialog.getColor(QColor(displayed[row].color), self, "ROI 색상")
         if color.isValid():
-            rois = list(self._static_rois)
+            rois = list(displayed)
             rois[row] = replace(rois[row], color=color.name())
             self._preview.set_rois(tuple(rois))
             self._apply_roi(tuple(rois))
 
-    def _assign_static_roi_to_items(self) -> None:
+    def _assign_rois_to_items(self) -> None:
         for item in self._model.items:
-            item.rois = self._static_rois
+            item.rois = self._effective_rois(item)
 
     def _reload_presets(self, selected: str | None = None) -> None:
         try:
@@ -458,23 +569,37 @@ class MainWindow(QMainWindow):
             self._preset_combo.addItem(name, name)
         self._preset_combo.setCurrentIndex(max(0, self._preset_combo.findData(selected)))
 
-    def _save_preset(self) -> None:
-        if not self._static_rois:
+    def _save_preset(self) -> bool:
+        item = self._current_item()
+        return self._save_roi_preset(item if item is not None and item.roi_preset_name is not None else None)
+
+    def _save_roi_preset(self, item: ImageItem | None) -> bool:
+        rois = self._effective_rois(item)
+        if not rois:
             QMessageBox.warning(self, "ROI 필요", "저장할 ROI를 먼저 지정해 주세요.")
-            return
+            return False
         name, accepted = QInputDialog.getText(
-            self, "ROI 프리셋 저장", "이름 (같은 이름은 덮어씁니다):",
-            text=self._preset_combo.currentData() or "",
+            self, f"ROI 프리셋 저장 · {item.path.name}" if item else "기본 ROI 프리셋 저장", "이름 (같은 이름은 덮어씁니다):",
+            text=(item.roi_preset_name if item else self._preset_combo.currentData()) or "",
         )
         if not accepted:
-            return
+            return False
         try:
-            self._preset_store.save(name, self._static_rois)
+            self._preset_store.save(name, rois)
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "프리셋 저장 실패", str(error))
-            return
-        self._reload_presets(name.strip())
+            return False
+        if item is None:
+            self._saved_rois = self._static_rois
+            self._saved_preset_name = name.strip()
+        else:
+            item.roi_preset_name = name.strip()
+            item.roi_preset_snapshot = rois
+            self._model.notify_item_updated(item)
+        self._update_default_roi_label()
+        self._reload_presets(self._saved_preset_name)
         self._status_label.setText(f"ROI 프리셋 저장: {name.strip()}")
+        return True
 
     def _load_preset(self) -> None:
         name = self._preset_combo.currentData()
@@ -485,9 +610,13 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "프리셋 불러오기 실패", str(error))
             return
-        self._preview.set_rois(rois)
-        self._apply_roi(rois)
-        self._status_label.setText(f"ROI 프리셋 적용: {name} · 모든 이미지에 동일한 좌표로 적용")
+        self._static_rois = rois
+        self._saved_rois = rois
+        self._saved_preset_name = name
+        self._update_default_roi_label()
+        self._preview.set_rois(self._display_rois())
+        self._refresh_roi_table()
+        self._status_label.setText(f"기본 ROI 프리셋 적용: {name} · 기본 ROI 사용인 이미지에 적용")
 
     def _delete_preset(self) -> None:
         name = self._preset_combo.currentData()
@@ -500,16 +629,62 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "프리셋 삭제 실패", str(error))
             return
+        if name == self._saved_preset_name:
+            self._saved_rois = ()
+            self._saved_preset_name = None
+        for item in self._model.items:
+            if item.roi_preset_name == name:
+                item.roi_preset_snapshot = ()
+                self._model.notify_item_updated(item)
+        self._update_default_roi_label()
         self._reload_presets()
         self._status_label.setText(f"ROI 프리셋 삭제: {name}")
+
+    @property
+    def _has_unsaved_rois(self) -> bool:
+        return self._static_rois != self._saved_rois or any(
+            item.roi_preset_name is not None and item.rois != item.roi_preset_snapshot
+            for item in self._model.items
+        )
+
+    def _save_unsaved_rois(self) -> bool:
+        if self._static_rois != self._saved_rois and not self._save_roi_preset(None):
+            return False
+        for item in self._model.items:
+            if item.roi_preset_name is not None and item.rois != item.roi_preset_snapshot:
+                if not self._save_roi_preset(item):
+                    return False
+        return True
+
+    def closeEvent(self, event) -> None:
+        # Commit a Tag that is still being edited before checking for changes.
+        focused = self.focusWidget()
+        if focused is not None and self._roi_table.isAncestorOf(focused):
+            focused.clearFocus()
+        if not self._has_unsaved_rois:
+            event.accept()
+            return
+        choice = QMessageBox.warning(
+            self,
+            "ROI 저장 확인",
+            "저장하지 않은 ROI 변경 사항이 있습니다.\n프리셋으로 저장한 뒤 종료하시겠습니까?",
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if choice == QMessageBox.StandardButton.Discard:
+            event.accept()
+        elif choice == QMessageBox.StandardButton.Save and self._save_unsaved_rois():
+            event.accept()
+        else:
+            event.ignore()
 
     def _run_ocr(self) -> None:
         if not self._model.items:
             QMessageBox.warning(self, "처리할 파일 없음", "먼저 이미지를 추가해 주세요.")
             return
 
-        if not self._static_rois:
-            QMessageBox.warning(self, "ROI 필요", "영역을 드래그해 추가하고 Tag / UI ID를 지정해 주세요.")
+        if any(not self._effective_rois(item) for item in self._model.items):
+            QMessageBox.warning(self, "ROI 필요", "ROI가 없는 이미지가 있습니다. 기본 ROI를 추가하거나 파일별 프리셋을 지정해 주세요.")
             return
 
         models = model_directory()
@@ -549,7 +724,7 @@ class MainWindow(QMainWindow):
         self._active_screenshot_preprocessing = (
             self._preprocess_checkbox.isChecked()
         )
-        self._assign_static_roi_to_items()
+        self._assign_rois_to_items()
         self._clear_previous_results()
 
         self._set_controls_enabled(False)
@@ -626,7 +801,8 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "OCR 실행 오류", message)
 
     def _show_item_details(self, item: ImageItem) -> None:
-        self._roi_label.setText(f"ROI {len(self._static_rois)}개 · 확대 {item.scale_factor}x · 내부 우클릭으로 삭제")
+        source = item.roi_preset_name or "기본 ROI"
+        self._roi_label.setText(f"ROI {len(self._effective_rois(item))}개 · {source} · 확대 {item.scale_factor}x · 내부 우클릭으로 삭제")
         self._update_roi_results()
 
     def _set_controls_enabled(self, enabled: bool) -> None:

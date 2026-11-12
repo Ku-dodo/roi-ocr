@@ -11,13 +11,15 @@ from ocr_app.domain.languages import get_language
 
 
 class ImageTableModel(QAbstractTableModel):
-    HEADERS = ("파일 이름", "형식", "배율", "인식 언어", "상태")
+    HEADERS = ("파일 이름", "형식", "배율", "인식 언어", "ROI 프리셋", "상태")
     LANGUAGE_COLUMN = 3
+    ROI_COLUMN = 4
 
     def __init__(self) -> None:
         super().__init__()
         self.items: list[ImageItem] = []
         self.default_language_code = "ko"
+        self.default_roi_label = "기본 ROI 사용"
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self.items)
@@ -40,11 +42,15 @@ class ImageTableModel(QAbstractTableModel):
                     if item.language_code is not None
                     else f"기본값 · {get_language(self.default_language_code).name}"
                 ),
+                (item.roi_preset_name + (" *" if item.rois != item.roi_preset_snapshot else "")
+                 if item.roi_preset_name is not None else self.default_roi_label),
                 item.status.value,
             )
             return values[index.column()]
 
         if role == Qt.ItemDataRole.ToolTipRole:
+            if index.column() == self.ROI_COLUMN:
+                return "클릭 또는 우클릭 메뉴로 ROI 프리셋을 선택합니다. 기본 ROI 사용인 파일만 기본 ROI를 따라갑니다."
             if index.column() == self.LANGUAGE_COLUMN:
                 return "클릭하여 파일의 언어를 변경합니다. 기본값 사용 시 상단 언어를 따라갑니다."
             if item.error_message:
@@ -72,6 +78,11 @@ class ImageTableModel(QAbstractTableModel):
                 self.index(0, self.LANGUAGE_COLUMN),
                 self.index(len(self.items) - 1, self.LANGUAGE_COLUMN),
             )
+
+    def set_default_roi_label(self, label: str) -> None:
+        self.default_roi_label = label
+        if self.items:
+            self.dataChanged.emit(self.index(0, self.ROI_COLUMN), self.index(len(self.items) - 1, self.ROI_COLUMN))
 
     def set_language_for_rows(self, rows: Iterable[int], code: str | None) -> None:
         if code is not None:

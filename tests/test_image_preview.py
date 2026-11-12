@@ -163,8 +163,9 @@ class ImagePreviewTests(unittest.TestCase):
 
     def test_repeated_drags_append_distinct_tags_and_colors(self) -> None:
         viewport = self.preview.viewport()
-        for start, end in ((QPoint(50, 50), QPoint(120, 100)),
-                           (QPoint(200, 150), QPoint(280, 240))):
+        for first, last in ((QPointF(100, 100), QPointF(250, 200)),
+                            (QPointF(900, 600), QPointF(1100, 800))):
+            start, end = self.preview.mapFromScene(first), self.preview.mapFromScene(last)
             QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=start)
             QTest.mouseMove(viewport, end)
             QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=end)
@@ -173,6 +174,82 @@ class ImagePreviewTests(unittest.TestCase):
         self.assertEqual(3, len({roi.color for roi in self.preview.rois}))
         self.assertEqual(["ui_1", "ui_2"], [r.tag for r in self.preview.rois[1:]])
         self.assertEqual(self.preview.rois, self.changes[-1])
+
+    def drag_scene(self, start: QPointF, end: QPointF) -> None:
+        viewport = self.preview.viewport()
+        first, last = self.preview.mapFromScene(start), self.preview.mapFromScene(end)
+        QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=first)
+        QTest.mouseMove(viewport, last)
+        QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=last)
+
+    def test_left_drag_moves_only_top_roi_after_zoom_and_preserves_metadata(self) -> None:
+        from dataclasses import replace
+        other = Roi(450, 350, 200, 160, "user_name", "#ffb347")
+        self.preview.set_rois((self.roi, other))
+        self.wheel(480)
+        self.preview.centerOn(600, 450)
+        first = self.preview.mapFromScene(QPointF(500, 400))
+        last = first + QPoint(70, 50)
+        delta = self.preview.mapToScene(last) - self.preview.mapToScene(first)
+        QTest.mousePress(self.preview.viewport(), Qt.MouseButton.LeftButton, pos=first)
+        QTest.mouseMove(self.preview.viewport(), last)
+        self.assertEqual([], self.changes)
+        self.wheel(120)
+        QTest.mouseRelease(self.preview.viewport(), Qt.MouseButton.LeftButton, pos=last)
+        expected = replace(other, x=other.x + round(delta.x()), y=other.y + round(delta.y()))
+        self.assertEqual((self.roi, expected), self.preview.rois)
+        self.assertEqual([(self.roi, expected)], self.changes)
+
+    def test_move_is_clamped_to_image_without_resizing(self) -> None:
+        self.drag_scene(QPointF(500, 380), QPointF(1590, 1190))
+        roi = self.preview.rois[0]
+        self.assertEqual((1400, 1040, 200, 160), (roi.x, roi.y, roi.width, roi.height))
+        self.drag_scene(QPointF(1500, 1120), QPointF(0, 0))
+        roi = self.preview.rois[0]
+        self.assertEqual((0, 0, 200, 160), (roi.x, roi.y, roi.width, roi.height))
+
+    def test_bottom_right_handle_resizes_and_limits_minimum_size_and_image_bounds(self) -> None:
+        self.drag_scene(QPointF(600, 460), QPointF(1590, 1190))
+        roi = self.preview.rois[0]
+        self.assertEqual((400, 300), (roi.x, roi.y))
+        self.assertGreater(roi.width, 1100)
+        self.assertLessEqual(roi.x + roi.width, 1600)
+        self.assertLessEqual(roi.y + roi.height, 1200)
+        self.drag_scene(QPointF(roi.x + roi.width, roi.y + roi.height), QPointF(200, 100))
+        self.assertEqual(Roi(400, 300, 2, 2), self.preview.rois[0])
+
+    def test_handles_remain_same_screen_size_and_tags_stay_above_roi(self) -> None:
+        from dataclasses import replace
+        long_tag = "user_name_with_a_very_long_identifier_" * 3
+        self.preview.set_rois((replace(self.roi, x=0, y=0, tag=long_tag),))
+        label, handle = self.preview._labels[0], self.preview._handles[0]
+        self.assertNotEqual(long_tag, label.text())
+        self.assertTrue(label.text().endswith("…"))
+        self.assertEqual(long_tag, label.toolTip())
+        sizes = []
+        for delta in (0, 480):
+            if delta:
+                self.wheel(delta)
+            label_bounds = label.deviceTransform(self.preview.viewportTransform()).mapRect(label.boundingRect())
+            roi_top = self.preview.mapFromScene(QPointF(0, 0)).y()
+            self.assertLess(label_bounds.bottom(), roi_top)
+            if not delta:
+                self.assertGreaterEqual(label_bounds.top(), 0)
+            sizes.append(handle.deviceTransform(self.preview.viewportTransform()).mapRect(handle.rect()).size())
+        self.assertEqual(sizes[0], sizes[1])
+
+    def test_escape_or_focus_loss_cancels_roi_edit_without_emitting_change(self) -> None:
+        for cancel in (lambda: QTest.keyClick(self.preview, Qt.Key.Key_Escape),
+                       lambda: QApplication.sendEvent(self.preview, QFocusEvent(QEvent.Type.FocusOut))):
+            start = self.preview.mapFromScene(QPointF(500, 380))
+            end = start + QPoint(40, 20)
+            QTest.mousePress(self.preview.viewport(), Qt.MouseButton.LeftButton, pos=start)
+            QTest.mouseMove(self.preview.viewport(), end)
+            self.assertNotEqual((self.roi,), self.preview.rois)
+            cancel()
+            QTest.mouseRelease(self.preview.viewport(), Qt.MouseButton.LeftButton, pos=end)
+            self.assertEqual((self.roi,), self.preview.rois)
+            self.assertEqual([], self.changes)
 
     def test_middle_drag_pans_without_changing_zoom_or_roi(self) -> None:
         self.wheel(600)

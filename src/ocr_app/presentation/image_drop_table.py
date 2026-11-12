@@ -40,6 +40,14 @@ class ImageDropTable(QTableView):
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         self._accept_image_drop(event)
 
+    def mousePressEvent(self, event) -> None:
+        index = self.indexAt(event.position().toPoint())
+        if (event.button() == Qt.MouseButton.RightButton and index.isValid()
+                and self.selectionModel().isRowSelected(index.row(), index.parent())):
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
         self._accept_image_drop(event)
 
