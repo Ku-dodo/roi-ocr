@@ -35,7 +35,7 @@ class ImagePreviewTests(unittest.TestCase):
         self.preview.show()
         self.application.processEvents()
         self.roi = Roi(400, 300, 200, 160)
-        self.assertTrue(self.preview.set_image(self.path, self.roi))
+        self.assertTrue(self.preview.set_image(self.path, (self.roi,)))
         self.application.processEvents()
         self.changes: list[Roi | None] = []
         self.preview.roi_changed.connect(self.changes.append)
@@ -67,7 +67,7 @@ class ImagePreviewTests(unittest.TestCase):
         self.preview.horizontalScrollBar().setValue(100)
         self.preview.verticalScrollBar().setValue(80)
         self.wheel(-120)
-        self.assertEqual(QRectF(400, 300, 200, 160), self.preview._roi_item.rect())
+        self.assertEqual(QRectF(400, 300, 200, 160), self.preview._roi_items[0].rect())
         self.assertEqual(bounds, self.preview.sceneRect())
         self.assertEqual([], self.changes)
 
@@ -91,14 +91,15 @@ class ImagePreviewTests(unittest.TestCase):
             math.floor(first.x()), math.floor(first.y()),
             math.ceil(last.x()) - math.floor(first.x()),
             math.ceil(last.y()) - math.floor(first.y()),
+            "ui_1", "#ffb347",
         )
         QTest.mousePress(self.preview.viewport(), Qt.MouseButton.LeftButton, pos=start)
         QTest.mouseMove(self.preview.viewport(), end)
         QTest.mouseRelease(self.preview.viewport(), Qt.MouseButton.LeftButton, pos=end)
-        self.assertEqual([expected], self.changes)
+        self.assertEqual([(self.roi, expected)], self.changes)
         self.assertEqual(
             QRectF(expected.x, expected.y, expected.width, expected.height),
-            self.preview._roi_item.rect(),
+            self.preview._roi_items[-1].rect(),
         )
 
     def test_resize_preserves_manual_zoom(self) -> None:
@@ -119,7 +120,7 @@ class ImagePreviewTests(unittest.TestCase):
         QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=position)
         self.application.processEvents()
         self.assertEqual(1.0, self.preview._zoom)
-        self.assertEqual(QRectF(400, 300, 200, 160), self.preview._roi_item.rect())
+        self.assertEqual(QRectF(400, 300, 200, 160), self.preview._roi_items[0].rect())
         self.assertEqual([], self.changes)
 
     def test_zoom_limits_and_image_change_reset(self) -> None:
@@ -129,16 +130,49 @@ class ImagePreviewTests(unittest.TestCase):
         for _ in range(8):
             self.wheel(-12000)
         self.assertEqual(self.preview.MIN_ZOOM, self.preview._zoom)
-        self.preview.set_image(self.path, self.roi)
+        self.preview.set_image(self.path, (self.roi,))
         self.assertEqual(1.0, self.preview._zoom)
         self.preview.set_image(None)
         self.assertTrue(self.preview.transform().isIdentity())
 
     def test_right_click_still_clears_roi_after_zoom(self) -> None:
         self.wheel(360)
-        QTest.mouseClick(self.preview.viewport(), Qt.MouseButton.RightButton)
-        self.assertIsNone(self.preview._roi_item)
-        self.assertEqual([None], self.changes)
+        self.preview.centerOn(500, 380)
+        QTest.mouseClick(self.preview.viewport(), Qt.MouseButton.RightButton,
+                         pos=self.preview.mapFromScene(QPointF(500, 380)))
+        self.assertEqual([], self.preview._roi_items)
+        self.assertEqual([()], self.changes)
+
+    def test_right_click_outside_preserves_rois_and_overlap_removes_only_topmost(self) -> None:
+        first = Roi(400, 300, 200, 160, "user_name")
+        second = Roi(450, 350, 200, 160, "password", "#ffb347")
+        self.preview.set_rois((first, second))
+        self.wheel(480)
+        self.preview.centerOn(500, 400)
+        for x, y in ((350, 250), (500, 400), (425, 325)):
+            QTest.mouseClick(self.preview.viewport(), Qt.MouseButton.RightButton,
+                             pos=self.preview.mapFromScene(QPointF(x, y)))
+            if (x, y) == (350, 250):
+                self.assertEqual((first, second), self.preview.rois)
+                self.assertEqual([], self.changes)
+            elif (x, y) == (500, 400):
+                self.assertEqual((first,), self.preview.rois)
+            else:
+                self.assertEqual((), self.preview.rois)
+        self.assertEqual([(first,), ()], self.changes)
+
+    def test_repeated_drags_append_distinct_tags_and_colors(self) -> None:
+        viewport = self.preview.viewport()
+        for start, end in ((QPoint(50, 50), QPoint(120, 100)),
+                           (QPoint(200, 150), QPoint(280, 240))):
+            QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=start)
+            QTest.mouseMove(viewport, end)
+            QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=end)
+        self.assertEqual(3, len(self.preview.rois))
+        self.assertEqual(3, len(self.preview._roi_items))
+        self.assertEqual(3, len({roi.color for roi in self.preview.rois}))
+        self.assertEqual(["ui_1", "ui_2"], [r.tag for r in self.preview.rois[1:]])
+        self.assertEqual(self.preview.rois, self.changes[-1])
 
     def test_middle_drag_pans_without_changing_zoom_or_roi(self) -> None:
         self.wheel(600)
@@ -156,7 +190,7 @@ class ImagePreviewTests(unittest.TestCase):
         self.assertEqual(horizontal - 60, self.preview.horizontalScrollBar().value())
         self.assertEqual(vertical - 40, self.preview.verticalScrollBar().value())
         self.assertEqual(transform, self.preview.transform())
-        self.assertEqual(QRectF(400, 300, 200, 160), self.preview._roi_item.rect())
+        self.assertEqual(QRectF(400, 300, 200, 160), self.preview._roi_items[0].rect())
         self.assertEqual([], self.changes)
         self.assertIsNone(self.preview._pan_origin)
         self.assertNotEqual(Qt.CursorShape.ClosedHandCursor, viewport.cursor().shape())
@@ -167,7 +201,7 @@ class ImagePreviewTests(unittest.TestCase):
     def test_image_change_and_focus_loss_stop_middle_drag(self) -> None:
         viewport = self.preview.viewport()
         for reset in (
-            lambda: self.preview.set_image(self.path, self.roi),
+            lambda: self.preview.set_image(self.path, (self.roi,)),
             lambda: QApplication.sendEvent(self.preview, QFocusEvent(QEvent.Type.FocusOut)),
         ):
             with self.subTest(reset=reset):

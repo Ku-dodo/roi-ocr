@@ -87,6 +87,50 @@ class DomainTests(unittest.TestCase):
 
 
 class UseCaseTests(unittest.TestCase):
+    def test_progress_reports_each_roi_in_progress_and_completed_results(self) -> None:
+        item = ImageItem(Path("sample.png"), rois=(Roi(0, 0, 10, 10, "name"), Roi(20, 0, 10, 10, "button")))
+        states = []
+        use_case = ProcessImagesUseCase(FakeImageProcessor(), FakeOcrEngine(), CapturingWriter(Path("result.csv")))
+        use_case.execute([item], lambda completed, total, current: states.append(
+            (current.active_roi_id, [r.ui_id for r in current.results])
+        ))
+        self.assertIn(("name", []), states)
+        self.assertIn(("button", ["name"]), states)
+        self.assertEqual((None, ["name", "button"]), states[-1])
+
+    def test_invalid_roi_ids_are_rejected_before_export(self) -> None:
+        writer = CapturingWriter(Path("result.csv"))
+        use_case = ProcessImagesUseCase(FakeImageProcessor(), FakeOcrEngine(), writer)
+        for tags in (("",), ("user_name", "user_name")):
+            item = ImageItem(Path("sample.png"), rois=tuple(Roi(0, 0, 10, 10, tag) for tag in tags))
+            with self.subTest(tags=tags), self.assertRaises(ValueError):
+                use_case.execute([item])
+        self.assertEqual([], writer.results)
+
+    def test_multiple_regions_keep_successes_after_one_region_fails(self) -> None:
+        class Processor:
+            def process(self, path, roi, scale):
+                if roi.tag == "broken":
+                    raise ValueError("ROI outside image")
+                return f"{roi.tag}:{path.stem}"
+
+        regions = (Roi(0, 0, 10, 10, "user_name"), Roi(20, 20, 10, 10, "broken"),
+                   Roi(40, 40, 10, 10, "password"))
+        items = [ImageItem(Path("screen-ko.png"), rois=regions, language_code="ko"),
+                 ImageItem(Path("screen-en.png"), rois=regions, language_code="en")]
+        with tempfile.TemporaryDirectory() as directory:
+            use_case = ProcessImagesUseCase(Processor(), FakeOcrEngine(), CsvResultWriter(Path(directory)))
+            summary = use_case.execute(items)
+            with summary.output_path.open(encoding="utf-8-sig", newline="") as stream:
+                rows = list(csv.reader(stream))
+        self.assertEqual(7, len(rows))
+        self.assertEqual(["user_name", "broken", "password"] * 2, [r[0] for r in rows[1:]])
+        self.assertEqual(["ko"] * 3 + ["en"] * 3, [r[1] for r in rows[1:]])
+        self.assertEqual(["Done", "Fail", "Done"] * 2, [r[3] for r in rows[1:]])
+        self.assertIn("password", items[0].extracted_text)
+        self.assertEqual(2, summary.failed)
+        self.assertEqual(3, len(items[0].results))
+
     def test_batch_continues_after_a_file_failure(self) -> None:
         writer = CapturingWriter(Path("result.csv"))
         use_case = ProcessImagesUseCase(FakeImageProcessor(), FakeOcrEngine(), writer)
@@ -116,27 +160,13 @@ class UseCaseTests(unittest.TestCase):
 
 
 class CsvWriterTests(unittest.TestCase):
-    def test_file_extension_setting_only_changes_exported_names(self) -> None:
-        results = [
-            OcrResult("한글.png", "인식 결과", 0.9),
-            OcrResult("sample.v2.PNG", "점 포함", None),
-            OcrResult("extensionless", "확장자 없음", None),
-        ]
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            for include in (True, False):
-                with self.subTest(include_file_extension=include):
-                    path = CsvResultWriter(
-                        Path(temporary_directory), include_file_extension=include,
-                    ).write(results)
-                    with path.open(encoding="utf-8-sig", newline="") as stream:
-                        rows = list(csv.reader(stream))
-                    expected = (
-                        ["한글.png", "sample.v2.PNG", "extensionless"]
-                        if include else ["한글", "sample.v2", "extensionless"]
-                    )
-                    self.assertEqual(expected, [row[0] for row in rows[1:]])
-                    self.assertEqual(["ko", "인식 결과", "Done", "90.00%"], rows[1][1:])
-                    self.assertEqual("한글.png", results[0].file_name)
+    def test_ui_id_is_exported_verbatim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result = OcrResult("menu.user_name", "인식 결과", 0.9)
+            path = CsvResultWriter(Path(directory)).write([result])
+            with path.open(encoding="utf-8-sig", newline="") as stream:
+                rows = list(csv.reader(stream))
+            self.assertEqual("menu.user_name", rows[1][0])
 
     def test_csv_has_required_headers_and_utf8_bom(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -155,7 +185,7 @@ class CsvWriterTests(unittest.TestCase):
             with output_path.open("r", encoding="utf-8-sig", newline="") as stream:
                 rows = list(csv.reader(stream))
             self.assertEqual(
-                ["파일 이름", "언어", "추출 문자열", "상태", "신뢰도"], rows[0]
+                ["UI ID", "언어", "추출 문자열", "상태", "신뢰도"], rows[0]
             )
             self.assertEqual(["한글.png", "ko", "추출 문자열", "Done", "93.46%"], rows[1])
             self.assertEqual(["빈칸.png", "ko", "", "Need Review", ""], rows[2])

@@ -10,9 +10,8 @@ from ocr_app.domain.models import OcrResult
 
 
 class CsvResultWriter:
-    def __init__(self, output_directory: Path, include_file_extension: bool = True) -> None:
+    def __init__(self, output_directory: Path) -> None:
         self._output_directory = output_directory
-        self._include_file_extension = include_file_extension
 
     def write(self, results: Sequence[OcrResult]) -> Path:
         self._output_directory.mkdir(parents=True, exist_ok=True)
@@ -21,13 +20,8 @@ class CsvResultWriter:
 
         with output_path.open("w", encoding="utf-8-sig", newline="") as stream:
             writer = csv.writer(stream, quoting=csv.QUOTE_ALL)
-            writer.writerow(("파일 이름", "언어", "추출 문자열", "상태", "신뢰도"))
+            writer.writerow(("UI ID", "언어", "추출 문자열", "상태", "신뢰도"))
             for result in results:
-                file_name = (
-                    result.file_name
-                    if self._include_file_extension
-                    else Path(result.file_name).stem
-                )
                 confidence = (
                     f"{result.confidence * 100:.2f}%"
                     if result.confidence is not None and math.isfinite(result.confidence)
@@ -35,7 +29,7 @@ class CsvResultWriter:
                 )
                 writer.writerow(
                     (
-                        file_name,
+                        result.ui_id,
                         result.language_code,
                         result.extracted_text,
                         result.status.value,

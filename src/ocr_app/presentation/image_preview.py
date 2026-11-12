@@ -8,6 +8,8 @@ from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QPixmap, QWheelEv
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsPixmapItem,
+    QGraphicsItem,
+    QGraphicsSimpleTextItem,
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsView,
@@ -20,6 +22,7 @@ class ImagePreview(QGraphicsView):
     roi_changed = Signal(object)
     MIN_ZOOM = 0.1
     MAX_ZOOM = 20.0
+    ROI_COLORS = ("#45a3ff", "#ffb347", "#72d98b", "#d58bff", "#ff7272", "#55d6d0", "#ff82be", "#c7d94a")
 
     def __init__(self) -> None:
         super().__init__()
@@ -28,7 +31,8 @@ class ImagePreview(QGraphicsView):
         self._pixmap_item: QGraphicsPixmapItem | None = None
         self._roi_item: QGraphicsRectItem | None = None
         self._drag_origin: QPointF | None = None
-        self._roi_before_drag: QRectF | None = None
+        self._rois: tuple[Roi, ...] = ()
+        self._roi_items: list[QGraphicsRectItem] = []
         self._pan_origin: QPoint | None = None
         self._zoom = 1.0
 
@@ -38,19 +42,20 @@ class ImagePreview(QGraphicsView):
         self.setMouseTracking(True)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         self.setToolTip(
-            "마우스로 드래그하여 모든 이미지에 적용할 Static ROI를 지정합니다. "
+            "왼쪽 드래그로 모든 이미지에 적용할 ROI를 추가합니다. 아래 표에서 Tag / UI ID를 편집할 수 있습니다. "
             "휠로 확대·축소하고 더블클릭하면 전체 이미지에 맞춥니다. "
             "휠 버튼을 누른 채 드래그하면 이미지를 이동합니다. "
-            "오른쪽 클릭하면 Static ROI가 해제됩니다."
+            "ROI 내부를 오른쪽 클릭하면 해당 ROI가 해제됩니다."
         )
 
-    def set_image(self, path: Path | None, roi: Roi | None = None) -> bool:
+    def set_image(self, path: Path | None, rois: tuple[Roi, ...] = ()) -> bool:
         self._stop_panning()
         self._graphics_scene.clear()
         self._pixmap_item = None
         self._roi_item = None
         self._drag_origin = None
-        self._roi_before_drag = None
+        self._rois = ()
+        self._roi_items = []
         self._zoom = 1.0
         self.resetTransform()
 
@@ -65,18 +70,46 @@ class ImagePreview(QGraphicsView):
 
         self._pixmap_item = self._graphics_scene.addPixmap(pixmap)
         self._graphics_scene.setSceneRect(QRectF(pixmap.rect()))
-        if roi is not None:
-            self._set_roi_rect(QRectF(roi.x, roi.y, roi.width, roi.height))
+        self.set_rois(rois)
         self._fit_image()
         return True
 
-    def clear_roi(self) -> None:
+    @property
+    def rois(self) -> tuple[Roi, ...]:
+        return self._rois
+
+    def set_rois(self, rois: tuple[Roi, ...]) -> None:
+        self._discard_draft()
+        for item in self._roi_items:
+            self._graphics_scene.removeItem(item)
+        self._roi_items = []
+        self._rois = tuple(rois)
+        if self._pixmap_item is None:
+            return
+        for roi in self._rois:
+            color = QColor(roi.color)
+            pen = QPen(color, 2)
+            pen.setCosmetic(True)
+            item = self._graphics_scene.addRect(QRectF(roi.x, roi.y, roi.width, roi.height), pen)
+            fill = QColor(color)
+            fill.setAlpha(35)
+            item.setBrush(fill)
+            item.setZValue(10)
+            label = QGraphicsSimpleTextItem(roi.tag, item)
+            label.setBrush(color)
+            label.setPos(roi.x + 3, roi.y + 2)
+            label.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
+            self._roi_items.append(item)
+
+    def _discard_draft(self) -> None:
         self._drag_origin = None
-        self._roi_before_drag = None
         if self._roi_item is not None:
             self._graphics_scene.removeItem(self._roi_item)
             self._roi_item = None
-        self.roi_changed.emit(None)
+
+    def clear_roi(self) -> None:
+        self.set_rois(())
+        self.roi_changed.emit(())
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -112,7 +145,7 @@ class ImagePreview(QGraphicsView):
             event.accept()
             return
         if self._pixmap_item is not None and event.button() == Qt.MouseButton.LeftButton:
-            self._drag_origin = None
+            self._discard_draft()
             self._fit_image()
             event.accept()
             return
@@ -135,14 +168,17 @@ class ImagePreview(QGraphicsView):
             return
 
         if event.button() == Qt.MouseButton.RightButton:
-            self.clear_roi()
+            point = self.mapToScene(event.position().toPoint())
+            for index in range(len(self._rois) - 1, -1, -1):
+                roi = self._rois[index]
+                if QRectF(roi.x, roi.y, roi.width, roi.height).contains(point):
+                    self.set_rois(self._rois[:index] + self._rois[index + 1:])
+                    self.roi_changed.emit(self._rois)
+                    break
             event.accept()
             return
 
         if event.button() == Qt.MouseButton.LeftButton:
-            self._roi_before_drag = (
-                QRectF(self._roi_item.rect()) if self._roi_item is not None else None
-            )
             self._drag_origin = self._clamped_scene_point(event.position().toPoint())
             event.accept()
             return
@@ -181,15 +217,18 @@ class ImagePreview(QGraphicsView):
             top = math.floor(rectangle.top())
             right = math.ceil(rectangle.right())
             bottom = math.ceil(rectangle.bottom())
+            self._discard_draft()
             if right - left >= 2 and bottom - top >= 2:
-                roi = Roi(left, top, right - left, bottom - top)
-                self._set_roi_rect(QRectF(roi.x, roi.y, roi.width, roi.height))
-                self.roi_changed.emit(roi)
-            elif self._roi_before_drag is not None:
-                self._set_roi_rect(self._roi_before_drag)
-            else:
-                self.clear_roi()
-            self._roi_before_drag = None
+                number = 1
+                tags = {roi.tag for roi in self._rois}
+                while f"ui_{number}" in tags:
+                    number += 1
+                used_colors = {roi.color for roi in self._rois}
+                color = next((c for c in self.ROI_COLORS if c not in used_colors),
+                             self.ROI_COLORS[len(self._rois) % len(self.ROI_COLORS)])
+                roi = Roi(left, top, right - left, bottom - top, f"ui_{number}", color)
+                self.set_rois(self._rois + (roi,))
+                self.roi_changed.emit(self._rois)
             event.accept()
             return
         super().mouseReleaseEvent(event)

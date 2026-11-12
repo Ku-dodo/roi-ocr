@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import math
 from pathlib import Path
@@ -29,6 +29,8 @@ class Roi:
     y: int
     width: int
     height: int
+    tag: str = ""
+    color: str = "#45a3ff"
 
     def __post_init__(self) -> None:
         if self.width <= 0 or self.height <= 0:
@@ -38,13 +40,15 @@ class Roi:
 @dataclass(slots=True)
 class ImageItem:
     path: Path
-    roi: Roi | None = None
+    rois: tuple[Roi, ...] = ()
     scale_factor: int = 1
     extracted_text: str = ""
     confidence: float | None = None
     status: ImageStatus = ImageStatus.READY
     error_message: str = ""
     language_code: str | None = None
+    results: list[OcrResult] = field(default_factory=list)
+    active_roi_id: str | None = None
 
     def __post_init__(self) -> None:
         self.path = self.path.resolve()
@@ -59,11 +63,12 @@ class OcrRecognition:
 
 @dataclass(frozen=True, slots=True)
 class OcrResult:
-    file_name: str
+    ui_id: str
     extracted_text: str
     confidence: float | None = None
     language_code: str = "ko"
     processing_failed: bool = False
+    error_message: str = ""
 
     @property
     def status(self) -> OcrResultStatus:

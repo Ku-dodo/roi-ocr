@@ -19,22 +19,6 @@ from ocr_app.domain.models import ImageItem, ImageStatus, OcrRecognition
 
 
 class OcrWorkerTests(unittest.TestCase):
-    def test_csv_writer_receives_file_extension_setting(self) -> None:
-        for include in (True, False):
-            with (
-                self.subTest(include_file_extension=include),
-                patch("ocr_app.presentation.worker.EasyOcrEngine"),
-                patch("ocr_app.presentation.worker.ProcessImagesUseCase"),
-                patch("ocr_app.presentation.worker.CsvResultWriter") as writer_type,
-            ):
-                worker = OcrWorker(
-                    items=[], model_directory=Path("models"),
-                    result_directory=Path("result"), languages=("ko", "en"),
-                    include_file_extension=include,
-                )
-                worker.run()
-                writer_type.assert_called_once_with(Path("result"), include_file_extension=include)
-
     def test_model_download_is_disabled_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory)
@@ -104,12 +88,12 @@ class OcrWorkerTests(unittest.TestCase):
                 })()
                 worker = OcrWorker(items, path, path, languages=("ko", "en"))
                 worker.run()
-            self.assertEqual(["ch_sim", "ko", "ko", "en"], [i.extracted_text for i in items])
+            self.assertEqual(["ch_sim", "ko", "ko", "en"], [i.results[0].extracted_text for i in items])
             self.assertTrue(all(i.status == ImageStatus.COMPLETED for i in items))
             self.assertEqual(3, engine_type.call_count)
             with next(path.glob("*.csv")).open(encoding="utf-8-sig", newline="") as stream:
                 rows = list(csv.reader(stream))
-            self.assertEqual([i.path.name for i in items], [r[0] for r in rows[1:]])
+            self.assertEqual(["full_image"] * len(items), [r[0] for r in rows[1:]])
             self.assertEqual(["ch_sim", "ko", "ko", "en"], [r[1] for r in rows[1:]])
             self.assertTrue(all(r[3] == "Done" for r in rows[1:]))
 

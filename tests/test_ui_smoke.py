@@ -19,7 +19,8 @@ from PySide6.QtGui import QDropEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QCompleter, QMessageBox
 
-from ocr_app.domain.models import ImageStatus, Roi
+from ocr_app.domain.models import ImageStatus, OcrResult, Roi
+from ocr_app.infrastructure.roi_preset_store import RoiPresetStore
 from ocr_app.presentation.image_drop_table import ImageDropTable
 from ocr_app.presentation.main_window import MainWindow
 
@@ -28,34 +29,6 @@ class MainWindowSmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.application = QApplication.instance() or QApplication([])
-
-    def test_csv_extension_setting_defaults_on_persists_and_reaches_worker(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            settings_path = str(Path(temporary_directory) / "settings.ini")
-            with patch(
-                "ocr_app.presentation.main_window.QSettings",
-                side_effect=lambda: QSettings(settings_path, QSettings.Format.IniFormat),
-            ):
-                window = MainWindow()
-                self.addCleanup(window.close)
-                self.assertTrue(window._include_extension_checkbox.isChecked())
-                for include in (False, True):
-                    window._include_extension_checkbox.setChecked(include)
-                    window._settings.sync()
-                    restored = MainWindow()
-                    self.addCleanup(restored.close)
-                    self.assertEqual(include, restored._include_extension_checkbox.isChecked())
-                    restored._model.add_paths([Path("sample.png")])
-                    restored._model_download_checkbox.setChecked(True)
-                    restored._thread_pool = Mock()
-                    with patch(
-                        "ocr_app.presentation.main_window.model_directory",
-                        return_value=Path(temporary_directory),
-                    ):
-                        restored._run_ocr()
-                    self.assertEqual(include, restored._worker._include_file_extension)
-                    self.assertFalse(restored._include_extension_checkbox.isEnabled())
-                    restored.close()
 
     def test_main_window_can_be_constructed(self) -> None:
         window = MainWindow()
@@ -78,6 +51,60 @@ class MainWindowSmokeTests(unittest.TestCase):
             [window._scale_combo.itemData(index) for index in range(window._scale_combo.count())],
         )
         window.close()
+
+    def test_roi_table_shows_selected_image_progress_results_and_errors(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        self.assertFalse(hasattr(window, "_result_text"))
+        self.assertEqual(5, window._roi_table.columnCount())
+        window._model.add_paths([Path("ko.png"), Path("en.png")])
+        rois = (Roi(0, 0, 10, 10, "name"), Roi(20, 0, 10, 10, "button"))
+        window._apply_roi(rois)
+        window._table.setCurrentIndex(window._model.index(0, 0))
+        korean, english = window._model.items
+        korean.status = ImageStatus.PROCESSING
+        korean.active_roi_id = "button"
+        korean.results = [OcrResult("name", "사용자", 0.99)]
+        window._ocr_progress(0, 2, korean)
+        self.assertEqual("완료", window._roi_table.item(0, 3).text())
+        self.assertEqual("사용자", window._roi_table.item(0, 4).text())
+        self.assertEqual("진행 중", window._roi_table.item(1, 3).text())
+        english.results = [OcrResult("name", "User", 0.5, "en"),
+                           OcrResult("button", "", None, "en", True, "broken ROI")]
+        window._table.setCurrentIndex(window._model.index(1, 0))
+        self.assertEqual("User", window._roi_table.item(0, 4).text())
+        self.assertEqual("검토 필요", window._roi_table.item(0, 3).text())
+        self.assertEqual("실패", window._roi_table.item(1, 3).text())
+        self.assertIn("broken ROI", window._roi_table.item(1, 4).toolTip())
+        window._clear_previous_results()
+        self.assertEqual("대기", window._roi_table.item(0, 3).text())
+        self.assertEqual("", window._roi_table.item(0, 4).text())
+
+    def test_preset_save_load_and_delete_through_ui(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "presets.json"
+            window = MainWindow()
+            self.addCleanup(window.close)
+            window._preset_store = RoiPresetStore(path)
+            rois = (Roi(0, 0, 10, 10, "user_name"), Roi(20, 0, 10, 10, "button", "#ffb347"))
+            window._apply_roi(rois)
+            with patch("ocr_app.presentation.main_window.QInputDialog.getText", return_value=("Login_Scene", True)):
+                window._preset_save_button.click()
+            restored = MainWindow()
+            self.addCleanup(restored.close)
+            restored._preset_store = RoiPresetStore(path)
+            restored._reload_presets("Login_Scene")
+            restored._preset_load_button.click()
+            self.assertEqual(rois, restored._static_rois)
+            self.assertEqual(rois, restored._preview.rois)
+            self.assertEqual("user_name", restored._roi_table.item(0, 1).text())
+            restored._set_controls_enabled(False)
+            self.assertFalse(restored._preset_load_button.isEnabled())
+            restored._set_controls_enabled(True)
+            with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+                restored._preset_delete_button.click()
+            self.assertEqual([], RoiPresetStore(path).names())
+            self.assertEqual(rois, restored._static_rois)
 
     def test_default_language_changes_only_inherited_files(self) -> None:
         window = MainWindow()
@@ -125,6 +152,7 @@ class MainWindowSmokeTests(unittest.TestCase):
                 patch("ocr_app.presentation.main_window.model_directory", return_value=models),
                 patch.object(QMessageBox, "warning") as warning,
             ):
+                window._apply_roi((Roi(0, 0, 10, 10, "user_name"),))
                 window._run_ocr()
             self.assertIn("중국어(간체)", warning.call_args.args[2])
             window._thread_pool.start.assert_not_called()
@@ -213,7 +241,6 @@ class MainWindowSmokeTests(unittest.TestCase):
         self.assertTrue(popup.isVisible())
         for control in (
             window._model_download_checkbox, window._scale_combo, window._preprocess_checkbox,
-            window._include_extension_checkbox,
         ):
             self.assertTrue(popup.isAncestorOf(control))
         QApplication.sendEvent(window._settings_button, QEvent(QEvent.Type.Leave))
@@ -274,7 +301,6 @@ class MainWindowSmokeTests(unittest.TestCase):
         self.assertFalse(window._settings_popup.isVisible())
         controls = (
             window._model_download_checkbox, window._scale_combo, window._preprocess_checkbox,
-            window._include_extension_checkbox,
         )
         self.assertTrue(all(not control.isEnabled() for control in controls))
         window._settings_popup.show_panel()
@@ -306,6 +332,7 @@ class MainWindowSmokeTests(unittest.TestCase):
                 ),
                 patch.object(QMessageBox, "warning") as warning,
             ):
+                window._apply_roi((Roi(0, 0, 10, 10, "user_name"),))
                 window._run_ocr()
 
             warning.assert_called_once()
@@ -324,6 +351,7 @@ class MainWindowSmokeTests(unittest.TestCase):
                 "ocr_app.presentation.main_window.model_directory",
                 return_value=Path(temporary_directory),
             ):
+                window._apply_roi((Roi(0, 0, 10, 10, "user_name"),))
                 window._run_ocr()
 
             window._thread_pool.start.assert_called_once_with(window._worker)
@@ -352,16 +380,42 @@ class MainWindowSmokeTests(unittest.TestCase):
         window._model.add_paths([Path("first.png"), Path("second.png")])
         static_roi = Roi(10, 20, 100, 50)
 
-        window._apply_roi(static_roi)
+        window._apply_roi((static_roi,))
 
-        self.assertTrue(all(item.roi is None for item in window._model.items))
+        self.assertTrue(all(item.rois == () for item in window._model.items))
         window._assign_static_roi_to_items()
         self.assertTrue(
-            all(item.roi == static_roi for item in window._model.items)
+            all(item.rois == (static_roi,) for item in window._model.items)
         )
         window._clear_roi_button.click()
-        self.assertIsNone(window._static_roi)
+        self.assertEqual((), window._static_rois)
         window.close()
+
+    def test_tags_edit_and_reject_duplicates_and_clear_all(self) -> None:
+        from PySide6.QtGui import QColor
+        window = MainWindow()
+        self.addCleanup(window.close)
+        self.assertFalse(hasattr(window, "_include_extension_checkbox"))
+        rois = (Roi(0, 0, 10, 10, "user_name"), Roi(20, 20, 10, 10, "password", "#ffb347"))
+        window._apply_roi(rois)
+        window._roi_table.item(0, 1).setText("display_name")
+        self.assertEqual("display_name", window._static_rois[0].tag)
+        self.assertEqual(window._static_rois, window._preview.rois)
+        for invalid in ("", "password"):
+            with patch.object(QMessageBox, "warning") as warning:
+                window._roi_table.item(0, 1).setText(invalid)
+            warning.assert_called_once()
+            self.assertEqual("display_name", window._roi_table.item(0, 1).text())
+        with patch("ocr_app.presentation.main_window.QColorDialog.getColor", return_value=QColor("#00ff00")):
+            window._roi_color_changed(0, 0)
+        self.assertEqual("#00ff00", window._static_rois[0].color)
+        window._set_controls_enabled(False)
+        self.assertFalse(window._preview.isEnabled())
+        self.assertFalse(window._roi_table.isEnabled())
+        window._set_controls_enabled(True)
+        window._clear_roi_button.click()
+        self.assertEqual((), window._static_rois)
+        self.assertEqual(0, window._roi_table.rowCount())
 
     def test_drop_data_accepts_only_existing_local_images(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

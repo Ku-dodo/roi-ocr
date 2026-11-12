@@ -42,6 +42,10 @@ class ProcessImagesUseCase:
     ) -> BatchProcessingSummary:
         if not items:
             raise ValueError("처리할 이미지가 없습니다.")
+        for item in items:
+            tags = [roi.tag for roi in item.rois]
+            if any(not tag.strip() for tag in tags) or len(tags) != len(set(tags)):
+                raise ValueError("ROI Tag / UI ID는 비어 있거나 중복될 수 없습니다.")
 
         results: list[OcrResult] = []
         succeeded = 0
@@ -51,42 +55,55 @@ class ProcessImagesUseCase:
         for index, item in enumerate(items, start=1):
             item.status = ImageStatus.PROCESSING
             item.error_message = ""
+            item.extracted_text = ""
+            item.confidence = None
+            item.results.clear()
+            item.active_roi_id = None
             if progress_callback is not None:
                 progress_callback(index - 1, total, item)
 
-            try:
-                processed_image = self._image_processor.process(
-                    item.path,
-                    item.roi,
-                    item.scale_factor,
-                )
-                engine = (
-                    self._engine_for_item(item)
-                    if self._engine_for_item is not None
-                    else self._ocr_engine
-                )
-                assert engine is not None
-                recognition = engine.recognize(processed_image)
-                item.extracted_text = recognition.text
-                item.confidence = recognition.confidence
-                item.status = ImageStatus.COMPLETED
-                succeeded += 1
-            except Exception as error:  # A failed file must not stop the batch.
-                item.extracted_text = ""
-                item.confidence = None
-                item.status = ImageStatus.FAILED
-                item.error_message = str(error)
-                failed += 1
-
-            results.append(
-                OcrResult(
-                    file_name=item.path.name,
-                    extracted_text=item.extracted_text,
-                    confidence=item.confidence,
-                    language_code=item.language_code or self._default_language_code,
-                    processing_failed=item.status == ImageStatus.FAILED,
-                )
+            errors: list[str] = []
+            for roi in item.rois or (None,):
+                ui_id = roi.tag if roi is not None else "full_image"
+                item.active_roi_id = ui_id
+                if progress_callback is not None:
+                    progress_callback(index - 1, total, item)
+                try:
+                    processed_image = self._image_processor.process(item.path, roi, item.scale_factor)
+                    engine = self._engine_for_item(item) if self._engine_for_item else self._ocr_engine
+                    assert engine is not None
+                    recognition = engine.recognize(processed_image)
+                    result = OcrResult(
+                        ui_id=ui_id,
+                        extracted_text=recognition.text,
+                        confidence=recognition.confidence,
+                        language_code=item.language_code or self._default_language_code,
+                    )
+                except Exception as error:  # Continue with the other regions and files.
+                    errors.append(f"{ui_id}: {error}")
+                    result = OcrResult(
+                        ui_id=ui_id,
+                        extracted_text="",
+                        language_code=item.language_code or self._default_language_code,
+                        processing_failed=True,
+                        error_message=str(error),
+                    )
+                item.results.append(result)
+                item.active_roi_id = None
+                if progress_callback is not None:
+                    progress_callback(index - 1, total, item)
+            results.extend(item.results)
+            item.error_message = "\n".join(errors)
+            item.extracted_text = "\n".join(
+                f"[{r.ui_id}] {r.extracted_text}" for r in item.results if not r.processing_failed
             )
+            confidences = [r.confidence for r in item.results if r.confidence is not None]
+            item.confidence = sum(confidences) / len(confidences) if confidences else None
+            item.status = ImageStatus.FAILED if errors else ImageStatus.COMPLETED
+            if errors:
+                failed += 1
+            else:
+                succeeded += 1
             if progress_callback is not None:
                 progress_callback(index, total, item)
 

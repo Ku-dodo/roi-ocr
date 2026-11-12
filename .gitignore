@@ -9,6 +9,7 @@ __pycache__/
 build/
 dist/
 result/
+presets/
 models/*.pth
 models/*.zip
 licenses/generated/

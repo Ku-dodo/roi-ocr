@@ -28,7 +28,6 @@ class OcrWorker(QRunnable):
         languages: Sequence[str],
         screenshot_preprocessing: bool = False,
         allow_model_download: bool = False,
-        include_file_extension: bool = True,
     ) -> None:
         super().__init__()
         self._items = list(items)
@@ -37,7 +36,6 @@ class OcrWorker(QRunnable):
         self._languages = tuple(languages)
         self._screenshot_preprocessing = screenshot_preprocessing
         self._allow_model_download = allow_model_download
-        self._include_file_extension = include_file_extension
         self.signals = OcrWorkerSignals()
 
     @Slot()
@@ -73,10 +71,7 @@ class OcrWorker(QRunnable):
                 ocr_engine=None,
                 engine_for_item=engine_for_item,
                 default_language_code=self._languages[0],
-                result_writer=CsvResultWriter(
-                    self._result_directory,
-                    include_file_extension=self._include_file_extension,
-                ),
+                result_writer=CsvResultWriter(self._result_directory),
             )
             summary = use_case.execute(self._items, self.signals.progress.emit)
             self.signals.finished.emit(summary)
