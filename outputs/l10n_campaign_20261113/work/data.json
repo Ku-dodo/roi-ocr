@@ -1,0 +1,1131 @@
+{
+  "db": [
+    [
+      "UI ID",
+      "언어",
+      "문자열"
+    ],
+    [
+      "Scene_Title",
+      "en",
+      "Campaign"
+    ],
+    [
+      "Mission_Title",
+      "en",
+      "Mission"
+    ],
+    [
+      "Mission_Data",
+      "en",
+      "Area 22 22nd Mission"
+    ],
+    [
+      "Story_Title",
+      "en",
+      "Story"
+    ],
+    [
+      "Story_Description",
+      "en",
+      "Tales of Youth and School Days"
+    ],
+    [
+      "Bounty_Title",
+      "en",
+      "Bounty"
+    ],
+    [
+      "Commissions_Title",
+      "en",
+      "Commissions"
+    ],
+    [
+      "Scrimmage_Title",
+      "en",
+      "Scrimmage"
+    ],
+    [
+      "Tactical_Title",
+      "en",
+      "Tactical Challenge"
+    ],
+    [
+      "Final_Data",
+      "en",
+      "Clear: 13"
+    ],
+    [
+      "Final_Title",
+      "en",
+      "Final Restriction Release"
+    ],
+    [
+      "Total_Title",
+      "en",
+      "Total Assault"
+    ],
+    [
+      "Joint_Title",
+      "en",
+      "Joint Firing Drill"
+    ],
+    [
+      "Grand_Title",
+      "en",
+      "Grand Assault"
+    ],
+    [
+      "Scene_Title",
+      "ko",
+      "업무"
+    ],
+    [
+      "Mission_Title",
+      "ko",
+      "임무"
+    ],
+    [
+      "Mission_Data",
+      "ko",
+      "Area 22 제 22임무"
+    ],
+    [
+      "Story_Title",
+      "ko",
+      "스토리"
+    ],
+    [
+      "Story_Description",
+      "ko",
+      "학원과 청춘의 이야기"
+    ],
+    [
+      "Bounty_Title",
+      "ko",
+      "현상수배"
+    ],
+    [
+      "Commissions_Title",
+      "ko",
+      "특별의뢰"
+    ],
+    [
+      "Scrimmage_Title",
+      "ko",
+      "학원교류회"
+    ],
+    [
+      "Tactical_Title",
+      "ko",
+      "전술 대회"
+    ],
+    [
+      "Final_Data",
+      "ko",
+      "Clear: 13"
+    ],
+    [
+      "Final_Title",
+      "ko",
+      "제약해제결전"
+    ],
+    [
+      "Total_Title",
+      "ko",
+      "총력전"
+    ],
+    [
+      "Joint_Title",
+      "ko",
+      "종합전술시험"
+    ],
+    [
+      "Grand_Title",
+      "ko",
+      "대결전"
+    ],
+    [
+      "Scene_Title",
+      "th",
+      "งาน"
+    ],
+    [
+      "Mission_Title",
+      "th",
+      "ภารกิจ"
+    ],
+    [
+      "Mission_Data",
+      "th",
+      "พื้นที่ 22 ภารกิจบทที่ 22"
+    ],
+    [
+      "Story_Title",
+      "th",
+      "เนื้อเรื่อง"
+    ],
+    [
+      "Story_Description",
+      "th",
+      "เรื่องราวที่สดใสกับชีวิตในโรงเรียน"
+    ],
+    [
+      "Bounty_Title",
+      "th",
+      "ประกาศจับ"
+    ],
+    [
+      "Commissions_Title",
+      "th",
+      "คำขอพิเศษ"
+    ],
+    [
+      "Scrimmage_Title",
+      "th",
+      "ทัวร์โรงเรียน"
+    ],
+    [
+      "Tactical_Title",
+      "th",
+      "อารีน่า"
+    ],
+    [
+      "Final_Data",
+      "th",
+      "Clear: 13"
+    ],
+    [
+      "Final_Title",
+      "th",
+      "ศึกทลายพันธะ"
+    ],
+    [
+      "Total_Title",
+      "th",
+      "เรดบอส"
+    ],
+    [
+      "Joint_Title",
+      "th",
+      "สอบประมวล"
+    ],
+    [
+      "Grand_Title",
+      "th",
+      "แกรนด์เรดบอส"
+    ],
+    [
+      "Scene_Title",
+      "ch_tra",
+      "任務"
+    ],
+    [
+      "Mission_Title",
+      "ch_tra",
+      "任務"
+    ],
+    [
+      "Mission_Data",
+      "ch_tra",
+      "Area 22 第22任務"
+    ],
+    [
+      "Story_Title",
+      "ch_tra",
+      "劇情"
+    ],
+    [
+      "Story_Description",
+      "ch_tra",
+      "學園與青春的故事"
+    ],
+    [
+      "Bounty_Title",
+      "ch_tra",
+      "懸賞通緝"
+    ],
+    [
+      "Commissions_Title",
+      "ch_tra",
+      "特殊任務"
+    ],
+    [
+      "Scrimmage_Title",
+      "ch_tra",
+      "學園交流會"
+    ],
+    [
+      "Tactical_Title",
+      "ch_tra",
+      "戰術大賽"
+    ],
+    [
+      "Final_Data",
+      "ch_tra",
+      "Clear: 13"
+    ],
+    [
+      "Final_Title",
+      "ch_tra",
+      "制約解除決戰"
+    ],
+    [
+      "Total_Title",
+      "ch_tra",
+      "總力戰"
+    ],
+    [
+      "Joint_Title",
+      "ch_tra",
+      "綜合戰術考試"
+    ],
+    [
+      "Grand_Title",
+      "ch_tra",
+      "大決戰"
+    ]
+  ],
+  "audit": [
+    [
+      "UI ID",
+      "언어",
+      "추출 문자열",
+      "상태",
+      "신뢰도",
+      "최종 문자열",
+      "변경 여부",
+      "검수",
+      "출처 이미지",
+      "확인 영역 (L,T,R,B)",
+      "비고"
+    ],
+    [
+      "Scene_Title",
+      "en",
+      "Campaign",
+      "Done",
+      "85.64%",
+      "Campaign",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "145, 9, 400, 59",
+      ""
+    ],
+    [
+      "Mission_Title",
+      "en",
+      "Mission",
+      "Done",
+      "100.00%",
+      "Mission",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1040, 340, 1270, 382",
+      ""
+    ],
+    [
+      "Mission_Data",
+      "en",
+      "Area 22 22nd Mission",
+      "Need Review",
+      "73.14%",
+      "Area 22 22nd Mission",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1035, 378, 1290, 418",
+      "문자 사이 공백은 화면의 시각적 간격을 전사; 원본 리소스의 공백 코드포인트는 확인 불가"
+    ],
+    [
+      "Story_Title",
+      "en",
+      "Story",
+      "Done",
+      "99.98%",
+      "Story",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1600, 340, 1790, 382",
+      ""
+    ],
+    [
+      "Story_Description",
+      "en",
+      "Tales of Youth and School Days",
+      "Done",
+      "86.82%",
+      "Tales of Youth and School Days",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1600, 383, 1860, 420",
+      ""
+    ],
+    [
+      "Bounty_Title",
+      "en",
+      "Bounty",
+      "Done",
+      "100.00%",
+      "Bounty",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1005, 592, 1175, 637",
+      ""
+    ],
+    [
+      "Commissions_Title",
+      "en",
+      "Commissions",
+      "Done",
+      "99.99%",
+      "Commissions",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "980, 746, 1165, 790",
+      ""
+    ],
+    [
+      "Scrimmage_Title",
+      "en",
+      "Scrimmage",
+      "Done",
+      "100.00%",
+      "Scrimmage",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "955, 900, 1120, 943",
+      ""
+    ],
+    [
+      "Tactical_Title",
+      "en",
+      "Tactical Challenge",
+      "Done",
+      "99.99%",
+      "Tactical Challenge",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1220, 899, 1400, 940",
+      ""
+    ],
+    [
+      "Final_Data",
+      "en",
+      "Clear: 13",
+      "Need Review",
+      "69.08%",
+      "Clear: 13",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1420, 864, 1520, 897",
+      ""
+    ],
+    [
+      "Final_Title",
+      "en",
+      "Final Restriction Release",
+      "Done",
+      "98.18%",
+      "Final Restriction Release",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1420, 899, 1590, 947",
+      "화면 자동 줄바꿈은 한 칸 공백으로 연결; 리소스의 명시적 개행 여부는 확인 불가"
+    ],
+    [
+      "Total_Title",
+      "en",
+      "Total Assault",
+      "Done",
+      "100.00%",
+      "Total Assault",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1260, 663, 1445, 709",
+      ""
+    ],
+    [
+      "Joint_Title",
+      "en",
+      "Joint Firing Drill",
+      "Done",
+      "99.08%",
+      "Joint Firing Drill",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1460, 663, 1645, 709",
+      ""
+    ],
+    [
+      "Grand_Title",
+      "en",
+      "Grand Assault",
+      "Done",
+      "99.99%",
+      "Grand Assault",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_en.png",
+      "1658, 663, 1835, 709",
+      ""
+    ],
+    [
+      "Scene_Title",
+      "ko",
+      "업무",
+      "Done",
+      "99.93%",
+      "업무",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "145, 9, 400, 59",
+      ""
+    ],
+    [
+      "Mission_Title",
+      "ko",
+      "임무",
+      "Done",
+      "99.97%",
+      "임무",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1040, 340, 1270, 382",
+      ""
+    ],
+    [
+      "Mission_Data",
+      "ko",
+      "Area 22제22임무",
+      "Done",
+      "86.91%",
+      "Area 22 제 22임무",
+      "수정",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1035, 378, 1290, 418",
+      "문자 사이 공백은 화면의 시각적 간격을 전사; 원본 리소스의 공백 코드포인트는 확인 불가; 이미지 기준 띄어쓰기 전사"
+    ],
+    [
+      "Story_Title",
+      "ko",
+      "스토리",
+      "Done",
+      "99.31%",
+      "스토리",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1600, 340, 1790, 382",
+      ""
+    ],
+    [
+      "Story_Description",
+      "ko",
+      "학원과 청춘의 이야기",
+      "Need Review",
+      "79.57%",
+      "학원과 청춘의 이야기",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1600, 383, 1860, 420",
+      ""
+    ],
+    [
+      "Bounty_Title",
+      "ko",
+      "현상수배",
+      "Done",
+      "83.03%",
+      "현상수배",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1005, 592, 1175, 637",
+      ""
+    ],
+    [
+      "Commissions_Title",
+      "ko",
+      "특별의회",
+      "Need Review",
+      "45.06%",
+      "특별의뢰",
+      "수정",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "980, 746, 1165, 790",
+      "확대 이미지 기준 OCR 오인식 수정"
+    ],
+    [
+      "Scrimmage_Title",
+      "ko",
+      "학원교류회",
+      "Done",
+      "99.40%",
+      "학원교류회",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "955, 900, 1120, 943",
+      ""
+    ],
+    [
+      "Tactical_Title",
+      "ko",
+      "전술대회",
+      "Done",
+      "97.79%",
+      "전술 대회",
+      "수정",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1220, 899, 1400, 940",
+      "이미지 기준 띄어쓰기 전사"
+    ],
+    [
+      "Final_Data",
+      "ko",
+      "Clear: 13",
+      "Done",
+      "90.15%",
+      "Clear: 13",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1420, 864, 1520, 897",
+      ""
+    ],
+    [
+      "Final_Title",
+      "ko",
+      "제약해제결전",
+      "Done",
+      "89.93%",
+      "제약해제결전",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1420, 899, 1590, 947",
+      ""
+    ],
+    [
+      "Total_Title",
+      "ko",
+      "총력전",
+      "Need Review",
+      "72.50%",
+      "총력전",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1260, 663, 1445, 709",
+      ""
+    ],
+    [
+      "Joint_Title",
+      "ko",
+      "종합전술시험",
+      "Done",
+      "94.71%",
+      "종합전술시험",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1460, 663, 1645, 709",
+      ""
+    ],
+    [
+      "Grand_Title",
+      "ko",
+      "대결전",
+      "Done",
+      "97.63%",
+      "대결전",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_ko.png",
+      "1658, 663, 1835, 709",
+      ""
+    ],
+    [
+      "Scene_Title",
+      "th",
+      "งาน",
+      "Need Review",
+      "52.78%",
+      "งาน",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "145, 9, 400, 59",
+      ""
+    ],
+    [
+      "Mission_Title",
+      "th",
+      "ภารกิจ",
+      "Need Review",
+      "53.38%",
+      "ภารกิจ",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1040, 340, 1270, 382",
+      ""
+    ],
+    [
+      "Mission_Data",
+      "th",
+      "พื้นที่ 22 ภารกิจบทที่ 22",
+      "Need Review",
+      "50.88%",
+      "พื้นที่ 22 ภารกิจบทที่ 22",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1035, 378, 1290, 418",
+      "문자 사이 공백은 화면의 시각적 간격을 전사; 원본 리소스의 공백 코드포인트는 확인 불가"
+    ],
+    [
+      "Story_Title",
+      "th",
+      "เนื้อเรื่อง",
+      "Need Review",
+      "67.47%",
+      "เนื้อเรื่อง",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1600, 340, 1790, 382",
+      ""
+    ],
+    [
+      "Story_Description",
+      "th",
+      "เรื่องราวที่สถใสกับชีวิตไนโรงเรียน",
+      "Need Review",
+      "28.23%",
+      "เรื่องราวที่สดใสกับชีวิตในโรงเรียน",
+      "수정",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1600, 383, 1860, 420",
+      "확대 이미지 기준 OCR 오인식 수정"
+    ],
+    [
+      "Bounty_Title",
+      "th",
+      "ประกาศจับ",
+      "Need Review",
+      "59.31%",
+      "ประกาศจับ",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1005, 592, 1175, 637",
+      ""
+    ],
+    [
+      "Commissions_Title",
+      "th",
+      "คำขอพิเศษ",
+      "Need Review",
+      "58.87%",
+      "คำขอพิเศษ",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "980, 746, 1165, 790",
+      ""
+    ],
+    [
+      "Scrimmage_Title",
+      "th",
+      "ทัวร์โรงเรียน",
+      "Need Review",
+      "54.62%",
+      "ทัวร์โรงเรียน",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "955, 900, 1120, 943",
+      ""
+    ],
+    [
+      "Tactical_Title",
+      "th",
+      "อารีนา",
+      "Need Review",
+      "68.14%",
+      "อารีน่า",
+      "수정",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1220, 899, 1400, 940",
+      "확대 이미지 기준 OCR 오인식 수정"
+    ],
+    [
+      "Final_Data",
+      "th",
+      "clear: 13",
+      "Need Review",
+      "72.48%",
+      "Clear: 13",
+      "수정",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1420, 864, 1520, 897",
+      "Clear의 대문자 C 확인"
+    ],
+    [
+      "Final_Title",
+      "th",
+      "ศึกทลายพันธะ",
+      "Done",
+      "93.84%",
+      "ศึกทลายพันธะ",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1420, 899, 1590, 947",
+      ""
+    ],
+    [
+      "Total_Title",
+      "th",
+      "เรถบอส",
+      "Done",
+      "81.39%",
+      "เรดบอส",
+      "수정",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1260, 663, 1445, 709",
+      "확대 이미지 기준 OCR 오인식 수정"
+    ],
+    [
+      "Joint_Title",
+      "th",
+      "สอบประมวล",
+      "Done",
+      "99.23%",
+      "สอบประมวล",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1460, 663, 1645, 709",
+      ""
+    ],
+    [
+      "Grand_Title",
+      "th",
+      "แกรนณ์เรถบอส",
+      "Need Review",
+      "49.74%",
+      "แกรนด์เรดบอส",
+      "수정",
+      "이미지 대조 완료",
+      "Campaign_th.png",
+      "1658, 663, 1835, 709",
+      "확대 이미지 기준 OCR 오인식 수정"
+    ],
+    [
+      "Scene_Title",
+      "ch_tra",
+      "任務",
+      "Done",
+      "99.66%",
+      "任務",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "145, 9, 400, 59",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Mission_Title",
+      "ch_tra",
+      "任務",
+      "Done",
+      "99.54%",
+      "任務",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1040, 340, 1270, 382",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Mission_Data",
+      "ch_tra",
+      "Area 22第22任務",
+      "Done",
+      "96.64%",
+      "Area 22 第22任務",
+      "수정",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1035, 378, 1290, 418",
+      "문자 사이 공백은 화면의 시각적 간격을 전사; 원본 리소스의 공백 코드포인트는 확인 불가; 파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지; 이미지 기준 띄어쓰기 전사"
+    ],
+    [
+      "Story_Title",
+      "ch_tra",
+      "劇情",
+      "Done",
+      "99.55%",
+      "劇情",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1600, 340, 1790, 382",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Story_Description",
+      "ch_tra",
+      "學園與青春的故事",
+      "Done",
+      "98.89%",
+      "學園與青春的故事",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1600, 383, 1860, 420",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Bounty_Title",
+      "ch_tra",
+      "懸賞通緝",
+      "Done",
+      "99.91%",
+      "懸賞通緝",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1005, 592, 1175, 637",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Commissions_Title",
+      "ch_tra",
+      "特殊任務",
+      "Done",
+      "99.65%",
+      "特殊任務",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "980, 746, 1165, 790",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Scrimmage_Title",
+      "ch_tra",
+      "學園交流會",
+      "Done",
+      "84.74%",
+      "學園交流會",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "955, 900, 1120, 943",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Tactical_Title",
+      "ch_tra",
+      "戰術大賽",
+      "Done",
+      "91.99%",
+      "戰術大賽",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1220, 899, 1400, 940",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Final_Data",
+      "ch_tra",
+      "Clear: 13",
+      "Done",
+      "95.17%",
+      "Clear: 13",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1420, 864, 1520, 897",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Final_Title",
+      "ch_tra",
+      "制約解除決戰",
+      "Done",
+      "99.69%",
+      "制約解除決戰",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1420, 899, 1590, 947",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Total_Title",
+      "ch_tra",
+      "總力戰",
+      "Done",
+      "90.40%",
+      "總力戰",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1260, 663, 1445, 709",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Joint_Title",
+      "ch_tra",
+      "綜合戰術考試",
+      "Done",
+      "98.68%",
+      "綜合戰術考試",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1460, 663, 1645, 709",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ],
+    [
+      "Grand_Title",
+      "ch_tra",
+      "大決戰",
+      "Done",
+      "99.76%",
+      "大決戰",
+      "유지",
+      "이미지 대조 완료",
+      "Campaign_zh_cn.png",
+      "1658, 663, 1835, 709",
+      "파일명 zh_cn과 달리 화면은 번체; 템플릿 ch_tra 유지"
+    ]
+  ],
+  "rules": [
+    [
+      "항목",
+      "작성 기준 / 제한"
+    ],
+    [
+      "범위",
+      "Test용.csv의 UI ID 14개 × 언어 4개 = 56행. 원본의 키·행 순서 유지."
+    ],
+    [
+      "DB 열",
+      "UI ID + 언어가 복합키이며 문자열이 이미지 대조 후 최종 전사값. CSV도 같은 3열이다."
+    ],
+    [
+      "언어 코드",
+      "en=영어, ko=한국어, th=태국어, ch_tra=중국어 번체. 기존 시스템 호환을 위해 템플릿 코드 유지."
+    ],
+    [
+      "중국어 파일명",
+      "Campaign_zh_cn.png는 파일명과 달리 번체 화면이다. zh_cn 또는 간체 데이터로 사용하지 않는다."
+    ],
+    [
+      "검수 방법",
+      "제공된 네 이미지의 UI 위치를 대조하고, 작은 문구를 확대하여 OCR 결과를 수정했다. 번역을 새로 만들지 않았다."
+    ],
+    [
+      "검수 상태",
+      "이미지 대조 완료는 화면 전사 검수이다. 게임 리소스·공식 문자열 테이블과의 코드포인트 일치 인증은 아니다."
+    ],
+    [
+      "공백의 한계",
+      "이미지만으로 U+0020/U+00A0, 혼합 글꼴 간격, 명시적 공백 유무를 확정할 수 없다. Mission_Data는 시각적 단어 간격을 공백으로 전사했다."
+    ],
+    [
+      "줄바꿈",
+      "영문 Final_Title의 화면 2줄은 한 칸 공백으로 연결했다. 다른 항목은 화면의 한 줄 문구를 전사했다. 리소스의 명시적 개행은 확인 불가하다."
+    ],
+    [
+      "수치",
+      "Area 22, 임무 22, Clear: 13은 제공 화면의 관측값이다. 숫자 치환·자리표시자화를 하지 않았다."
+    ],
+    [
+      "OCR 신뢰도",
+      "검수이력의 상태·신뢰도는 OCR CSV 원본값이다. 수정 후 정확도나 사람 검수 신뢰도로 재해석하지 않는다."
+    ],
+    [
+      "추적 방법",
+      "검수이력의 첫 5열은 제공 OCR CSV와 동일하다. 최종 문자열·변경 여부·검수·이미지·좌표·비고를 뒤에 추가했다."
+    ],
+    [
+      "좌표 규칙",
+      "이미지 좌상단 원점의 픽셀 좌표 (left, top, right, bottom). 전체 이미지 1919 × 1079 기준의 확인 영역이다."
+    ],
+    [
+      "제외 범위",
+      "템플릿에 없는 이벤트 배지, 남은 일수, 캐릭터 대사, 재화 수치, 잠금 메뉴, 배경 글자는 DB에 추가하지 않았다."
+    ],
+    [
+      "원본 보존",
+      "원본 이미지와 CSV는 변경하지 않았다. 아래 SHA-256은 입력 파일의 식별용 해시이다."
+    ]
+  ],
+  "sources": [
+    [
+      "원본 파일",
+      "원본 경로",
+      "SHA-256"
+    ],
+    [
+      "Test용.csv",
+      "C:\\Users\\kudh\\Pictures\\LangTestPack\\Test용.csv",
+      "cb976c6d456ddb073613eaa5ca77289ed1a9dad37229a69c1b868e99f45b3902"
+    ],
+    [
+      "ocr_result_20261112_220648_446284.csv",
+      "C:\\Users\\kudh\\Pictures\\LangTestPack\\ocr_result_20261112_220648_446284.csv",
+      "527f6a1b17582772f89410e1c6750768a2c8d940a363ca5c239ca0d6a54981f2"
+    ],
+    [
+      "Campaign_en.png",
+      "C:\\Users\\kudh\\Pictures\\LangTestPack\\Campaign_en.png",
+      "315653bf3d39111bbdfe7f25d5b8ef7743d67bda55d4c30fb6b4e60e3a8f14f3"
+    ],
+    [
+      "Campaign_ko.png",
+      "C:\\Users\\kudh\\Pictures\\LangTestPack\\Campaign_ko.png",
+      "a322ae354fcfd4d28f57607af39562ebe948b21cd3113351d2312dde0472bcdb"
+    ],
+    [
+      "Campaign_th.png",
+      "C:\\Users\\kudh\\Pictures\\LangTestPack\\Campaign_th.png",
+      "d9221f5063d5db19e6073f65d0ab6e6d2b531cbfed4b2c0d34e22390f36f77ed"
+    ],
+    [
+      "Campaign_zh_cn.png",
+      "C:\\Users\\kudh\\Pictures\\LangTestPack\\Campaign_zh_cn.png",
+      "edca1a16c5b0a62c0c485c2a64e5b24aaee5b75f8f1273c4813e36a7b263e165"
+    ]
+  ]
+}
