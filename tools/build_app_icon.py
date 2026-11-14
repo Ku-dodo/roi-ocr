@@ -13,6 +13,12 @@ from PySide6.QtWidgets import QApplication
 
 
 def main() -> None:
+    """입력 인자 없이 앱 SVG를 읽어 Windows용 다중 해상도 ICO를 생성한다.
+
+    Returns:
+        None. assets/app.ico를 저장하고 저장 경로를 표준 출력에 표시한다.
+        SVG가 유효하지 않으면 ValueError를 발생시킨다.
+    """
     app = QApplication.instance() or QApplication([])
     assets = Path(__file__).resolve().parents[1] / "src" / "ocr_app" / "presentation" / "assets"
     renderer = QSvgRenderer(str(assets / "app.svg"))

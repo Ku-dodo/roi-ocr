@@ -18,6 +18,14 @@ class RoiPresetStore:
 
     @staticmethod
     def _decode(entries: object) -> tuple[Roi, ...]:
+        """JSON에서 읽은 ROI 항목의 타입·Tag·색상·중복을 검증한다.
+
+        Args:
+            entries: ROI 딕셔너리의 비어 있지 않은 목록이어야 하는 역직렬화 값.
+
+        Returns:
+            검증된 ROI 튜플. 잘못된 타입, 빈 Tag, 중복 Tag 등은 ValueError로 알린다.
+        """
         if not isinstance(entries, list) or not entries:
             raise ValueError("프리셋에는 ROI가 하나 이상 필요합니다.")
         rois = []
@@ -37,6 +45,12 @@ class RoiPresetStore:
         return tuple(rois)
 
     def _read(self) -> dict[str, tuple[Roi, ...]]:
+        """입력 인자 없이 파일 형식 버전과 전체 프리셋 내용을 검사하여 읽는다.
+
+        Returns:
+            이름을 키로 하는 ROI 튜플 사전. 파일이 아직 없으면 빈 사전이며,
+            손상되거나 지원하지 않는 형식의 파일은 예외를 전파한다.
+        """
         if not self.path.exists():
             return {}
         try:
@@ -59,6 +73,15 @@ class RoiPresetStore:
             raise ValueError("선택한 프리셋이 없습니다.") from error
 
     def save(self, name: str, rois: tuple[Roi, ...]) -> None:
+        """ROI를 검증하고 이름의 양끝 공백을 제거하여 프리셋을 저장한다.
+
+        Args:
+            name: 프리셋 이름. 같은 이름이 있으면 해당 항목을 덮어쓴다.
+            rois: 저장할 비어 있지 않은 ROI 튜플.
+
+        Returns:
+            None. 다른 프리셋은 유지한다. 검증·파일 저장 오류는 호출자에게 전파한다.
+        """
         if not name.strip():
             raise ValueError("프리셋 이름을 입력해 주세요.")
         validated = self._decode([asdict(roi) for roi in rois])
@@ -74,6 +97,14 @@ class RoiPresetStore:
         self._write(presets)
 
     def _write(self, presets: dict[str, tuple[Roi, ...]]) -> None:
+        """임시 파일을 완성한 뒤 교체하여 중간 저장으로 인한 파일 손상을 줄인다.
+
+        Args:
+            presets: 파일에 기록할 전체 프리셋 사전.
+
+        Returns:
+            None. 버전 1 JSON으로 저장하고 실패 시에도 남은 임시 파일을 정리한다.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         data = {"version": 1, "presets": {name: [asdict(roi) for roi in rois] for name, rois in presets.items()}}
         temporary_path = None

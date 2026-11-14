@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -122,6 +123,53 @@ class ImagePreviewTests(unittest.TestCase):
         self.assertEqual(1.0, self.preview._zoom)
         self.assertEqual(QRectF(400, 300, 200, 160), self.preview._roi_items[0].rect())
         self.assertEqual([], self.changes)
+
+    def open_tag_editor(self, index=0):
+        label = self.preview._labels[index]
+        bounds = label.deviceTransform(self.preview.viewportTransform()).mapRect(label.boundingRect())
+        QTest.mouseDClick(self.preview.viewport(), Qt.MouseButton.LeftButton, pos=bounds.center().toPoint())
+        self.application.processEvents()
+        self.assertIsNotNone(self.preview._tag_editor)
+        return self.preview._tag_editor
+
+    def test_badge_double_click_edits_tag_without_changing_zoom_or_geometry(self):
+        self.preview.set_rois((replace(self.roi, tag="old_tag"),))
+        self.wheel(240)
+        zoom = self.preview._zoom
+        editor = self.open_tag_editor()
+        editor.setText("new_tag")
+        QTest.keyClick(editor, Qt.Key.Key_Return)
+        self.assertEqual((replace(self.roi, tag="new_tag"),), self.preview.rois)
+        self.assertEqual(zoom, self.preview._zoom)
+        self.assertEqual([self.preview.rois], self.changes)
+        self.assertIsNone(self.preview._tag_editor)
+
+    def test_tag_editor_escape_and_invalid_names_preserve_original(self):
+        rois = (replace(self.roi, tag="first"), Roi(800, 600, 100, 80, "second"))
+        self.preview.set_rois(rois)
+        editor = self.open_tag_editor()
+        for invalid in ("", "second"):
+            editor.setText(invalid)
+            QTest.keyClick(editor, Qt.Key.Key_Return)
+            self.assertEqual(rois, self.preview.rois)
+            self.assertIsNotNone(self.preview._tag_editor)
+        editor.setText("discarded")
+        QTest.keyClick(editor, Qt.Key.Key_Escape)
+        self.assertIsNone(self.preview._tag_editor)
+        self.assertEqual(rois, self.preview.rois)
+        self.assertEqual([], self.changes)
+
+    def test_tag_editor_focus_loss_commits_and_image_switch_cancels(self):
+        self.preview.set_rois((replace(self.roi, tag="first"),))
+        editor = self.open_tag_editor()
+        editor.setText("committed")
+        self.preview.setFocus()
+        self.application.processEvents()
+        self.assertEqual("committed", self.preview.rois[0].tag)
+        self.open_tag_editor().setText("not_saved")
+        self.preview.set_image(self.path, (self.roi,))
+        self.assertIsNone(self.preview._tag_editor)
+        self.assertEqual((self.roi,), self.preview.rois)
 
     def test_zoom_limits_and_image_change_reset(self) -> None:
         for _ in range(4):

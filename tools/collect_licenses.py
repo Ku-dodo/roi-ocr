@@ -18,6 +18,12 @@ def safe_name(value: str) -> str:
 
 
 def main() -> None:
+    """입력 인자 없이 현재 Python 환경의 패키지 정보와 라이선스 파일을 수집한다.
+
+    Returns:
+        None. licenses/generated에 패키지별 원문과 INSTALLED_PACKAGES.txt를 쓴다.
+        동일한 파일 이름은 접두 번호로 구분하며 라이선스 적합성을 판정하지는 않는다.
+    """
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)

@@ -27,6 +27,18 @@ class ProcessImagesUseCase:
         engine_for_item: Callable[[ImageItem], OcrEngine] | None = None,
         default_language_code: str = "ko",
     ) -> None:
+        """이미지 처리기·OCR 엔진·저장기를 연결한다.
+
+        Args:
+            image_processor: 영역 자르기와 전처리를 담당하는 구현체.
+            ocr_engine: 공통 OCR 엔진. 파일별 선택기가 있으면 None이어도 된다.
+            result_writer: 전체 영역의 결과를 저장하는 구현체.
+            engine_for_item: 이미지마다 엔진을 선택하는 함수. 공통 엔진보다 우선한다.
+            default_language_code: 개별 언어를 지정하지 않은 이미지의 결과 언어 코드.
+
+        Returns:
+            None. 엔진과 선택기가 모두 없으면 ValueError를 발생시킨다.
+        """
         if ocr_engine is None and engine_for_item is None:
             raise ValueError("OCR 엔진 또는 파일별 엔진 선택기가 필요합니다.")
         self._image_processor = image_processor
@@ -40,6 +52,18 @@ class ProcessImagesUseCase:
         items: Sequence[ImageItem],
         progress_callback: ProgressCallback | None = None,
     ) -> BatchProcessingSummary:
+        """이미지별 ROI를 순차 처리하고 모든 결과를 한 파일에 저장한다.
+
+        Args:
+            items: 처리할 이미지 목록. 항목의 상태·결과·오류를 직접 갱신한다.
+                ROI가 없으면 전체 이미지를 하나의 영역으로 처리한다.
+            progress_callback: (완료 영역 수, 전체 영역 수, 현재 이미지)를 받는 함수.
+                처리 시작·영역 완료·이미지 집계 시 호출되므로 횟수는 영역 수보다 많다.
+
+        Returns:
+            저장 경로와 이미지 단위 성공·실패 집계. 영역별 오류는 기록하고 계속하며,
+            입력 검증 오류와 최종 저장 오류는 호출자에게 전파한다.
+        """
         if not items:
             raise ValueError("처리할 이미지가 없습니다.")
         for item in items:

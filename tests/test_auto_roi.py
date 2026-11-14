@@ -14,11 +14,12 @@ import numpy as np
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, QPointF
+from PySide6.QtGui import QPalette, QPixmap
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QMessageBox
 
-from ocr_app.domain.models import Roi
+from ocr_app.domain.models import ROI_COLORS, Roi
 from ocr_app.infrastructure.easyocr_roi_detector import EasyOcrRoiDetector, make_roi_candidates
 from ocr_app.infrastructure.roi_preset_store import RoiPresetStore
 from ocr_app.presentation.main_window import MainWindow
@@ -41,7 +42,7 @@ class RoiDetectorTests(unittest.TestCase):
                 ["en"], gpu=False, recognizer=False, model_storage_directory=temporary,
                 download_enabled=False, verbose=False,
             )
-        self.assertEqual([(2, 4, 20, 10), (30, 18, 32, 18)],
+        self.assertEqual([(30, 18, 32, 18), (2, 4, 20, 10)],
                          [(r.x, r.y, r.width, r.height) for r in result])
 
     def test_candidates_clip_deduplicate_and_preserve_existing_tags(self):
@@ -54,6 +55,41 @@ class RoiDetectorTests(unittest.TestCase):
         self.assertEqual([(0, 0, 13, 13), (90, 90, 10, 10)],
                          [(r.x, r.y, r.width, r.height) for r in result])
         self.assertEqual(["ui_2", "ui_3"], [r.tag for r in result])
+
+    def test_largest_first_removes_nested_boxes_regardless_of_input_order(self):
+        boxes = [(10, 10, 20, 20), (10, 10, 90, 90), (10, 10, 60, 60),
+                 (120, 20, 160, 60), (120, 20, 160, 60)]
+        expected = [(10, 10, 80, 80), (120, 20, 40, 40)]
+        for inputs in (boxes, list(reversed(boxes))):
+            result = make_roi_candidates(inputs, 200, 100)
+            self.assertEqual(expected, [(r.x, r.y, r.width, r.height) for r in result])
+
+    def test_full_containment_includes_touching_edges_but_keeps_partial_overlap(self):
+        existing = (Roi(10, 10, 100, 100, "manual"),)
+        result = make_roi_candidates([
+            (10, 10, 110, 110), (10, 20, 110, 90),  # equal / boundary containment
+            (20, 10, 120, 110),  # 90% overlap, but extends beyond the manual ROI
+        ], 200, 200, existing)
+        self.assertEqual([(20, 10, 100, 100)], [(r.x, r.y, r.width, r.height) for r in result])
+        self.assertEqual("manual", existing[0].tag)
+
+    def test_partial_overlap_between_automatic_boxes_keeps_both(self):
+        result = make_roi_candidates([(0, 0, 100, 100), (10, 0, 110, 100)], 200, 200)
+        self.assertEqual(2, len(result))
+
+    def test_automatic_colors_skip_used_colors_and_cycle_after_palette(self):
+        existing = (Roi(0, 50, 10, 10, "manual", ROI_COLORS[0].upper()),)
+        boxes = [(20 * i, 0, 20 * i + 10, 10) for i in range(len(ROI_COLORS) + 1)]
+        result = make_roi_candidates(boxes, 300, 100, existing)
+        self.assertEqual(list(ROI_COLORS[1:]), [r.color for r in result[:7]])
+        self.assertEqual(ROI_COLORS[0], result[7].color)
+        self.assertEqual(ROI_COLORS[1], result[8].color)
+
+    def test_small_existing_roi_is_preserved_inside_large_new_candidate(self):
+        existing = (Roi(20, 20, 10, 10, "manual"),)
+        result = make_roi_candidates([(10, 10, 100, 100)], 200, 200, existing)
+        self.assertEqual(1, len(result))
+        self.assertEqual(Roi(20, 20, 10, 10, "manual"), existing[0])
 
     def test_worker_reports_failure_without_mutating_existing_rois(self):
         original = (Roi(1, 2, 20, 10, "manual"),)
@@ -138,6 +174,42 @@ class AutoRoiUiTests(unittest.TestCase):
         self.assertEqual((), dialog.selected_rois())
         self.assertEqual(self.manual, dialog._preview.rois)
         self.assertFalse(dialog._buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled())
+
+    def test_right_click_unchecks_candidate_but_keeps_colored_row_for_restore(self):
+        candidates = (replace(self.candidates[0], color="#ffb347"),)
+        dialog = RoiDraftDialog(self.path, self.manual, candidates)
+        self.addCleanup(dialog.close)
+        dialog.show()
+        self.app.processEvents()
+        row = dialog._list.item(0)
+        self.assertEqual("#ffb347", row.icon().pixmap(14, 14).toImage().pixelColor(7, 7).name())
+        position = dialog._preview.mapFromScene(QPointF(90, 40))
+        QTest.mouseClick(dialog._preview.viewport(), Qt.MouseButton.RightButton, pos=position)
+        self.assertEqual(Qt.CheckState.Unchecked, row.checkState())
+        self.assertEqual(1, dialog._list.count())
+        self.assertEqual(dialog._list.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text),
+                         row.foreground().color())
+        self.assertEqual(self.manual, dialog._preview.rois)
+        self.assertEqual((), dialog.selected_rois())
+        self.assertFalse(dialog._buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled())
+        row.setCheckState(Qt.CheckState.Checked)
+        self.assertEqual(self.manual + candidates, dialog._preview.rois)
+        self.assertEqual(candidates, dialog.selected_rois())
+
+    def test_right_click_preserves_manual_roi_and_excludes_topmost_overlapping_candidate(self):
+        candidates = self.candidates + (Roi(70, 35, 30, 10, "ui_2", "#72d98b"),)
+        dialog = RoiDraftDialog(self.path, self.manual, candidates)
+        self.addCleanup(dialog.close)
+        dialog.show()
+        self.app.processEvents()
+        for point in (QPointF(10, 8), QPointF(180, 100)):
+            QTest.mouseClick(dialog._preview.viewport(), Qt.MouseButton.RightButton,
+                             pos=dialog._preview.mapFromScene(point))
+        self.assertEqual(candidates, dialog.selected_rois())
+        QTest.mouseClick(dialog._preview.viewport(), Qt.MouseButton.RightButton,
+                         pos=dialog._preview.mapFromScene(QPointF(85, 40)))
+        self.assertEqual((candidates[0],), dialog.selected_rois())
+        self.assertEqual(self.manual + (candidates[0],), dialog._preview.rois)
 
     def test_background_worker_uses_original_image_and_locks_controls(self):
         self.window._model_download_checkbox.setChecked(True)

@@ -25,6 +25,14 @@ class ImageDropTable(QTableView):
 
     @classmethod
     def image_paths(cls, mime_data: QMimeData) -> tuple[Path, ...]:
+        """드롭 데이터에서 지원 확장자를 가진 실제 로컬 이미지 파일만 추린다.
+
+        Args:
+            mime_data: Qt URL 목록을 담을 수 있는 드래그 데이터.
+
+        Returns:
+            존재하는 로컬 파일의 Path 튜플. 원격 URL·폴더·미지원 파일은 제외한다.
+        """
         if not mime_data.hasUrls():
             return ()
 
@@ -41,6 +49,14 @@ class ImageDropTable(QTableView):
         self._accept_image_drop(event)
 
     def mousePressEvent(self, event) -> None:
+        """이미 선택한 행의 우클릭이 기존 다중 선택을 해제하지 않도록 한다.
+
+        Args:
+            event: Qt 마우스 누름 이벤트.
+
+        Returns:
+            None. 그 밖의 클릭은 QTableView의 기본 선택 처리에 위임한다.
+        """
         index = self.indexAt(event.position().toPoint())
         if (event.button() == Qt.MouseButton.RightButton and index.isValid()
                 and self.selectionModel().isRowSelected(index.row(), index.parent())):

@@ -28,6 +28,16 @@ class ImageTableModel(QAbstractTableModel):
         return 0 if parent.isValid() else len(self.HEADERS)
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
+        """Qt가 요청한 역할에 맞춰 셀 표시값·도움말·색상 또는 이미지 객체를 제공한다.
+
+        Args:
+            index: 조회할 셀의 모델 인덱스.
+            role: Qt 데이터 역할. UserRole은 셀 편집기가 사용할 ImageItem을 요청한다.
+
+        Returns:
+            역할별 데이터 또는 None. 기본 언어·ROI는 개별 지정이 없을 때 표시하며,
+            저장 스냅샷과 다른 파일별 ROI에는 변경 표시를 붙인다.
+        """
         if not index.isValid() or not 0 <= index.row() < len(self.items):
             return None
 
@@ -115,6 +125,14 @@ class ImageTableModel(QAbstractTableModel):
         return flags
 
     def add_paths(self, paths: Iterable[Path]) -> int:
+        """절대 경로로 정규화하고 대소문자를 무시하여 중복 파일을 제외한다.
+
+        Args:
+            paths: 파일 목록에 등록할 경로들의 순회 가능한 객체.
+
+        Returns:
+            실제 추가한 이미지 개수. Qt 행 삽입 알림을 보내며 기존 행은 유지한다.
+        """
         existing = {str(item.path).casefold() for item in self.items}
         new_items: list[ImageItem] = []
         for path in paths:

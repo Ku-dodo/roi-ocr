@@ -11,6 +11,15 @@ if str(SOURCE_ROOT) not in sys.path:
 
 
 def run_ocr_smoke_test(image_path: Path) -> int:
+    """GUI 없이 실제 OCR을 실행하여 소스·패키징 환경의 동작을 점검한다.
+
+    Args:
+        image_path: 한국어·영어 모델로 처리할 이미지 경로.
+
+    Returns:
+        처리 실패가 없으면 0, 실패가 있으면 1. 모델 다운로드를 허용하며
+        전체 이미지를 2배로 확대해 앱의 결과 폴더에 CSV를 저장한다.
+    """
     from ocr_app.application.process_images import ProcessImagesUseCase
     from ocr_app.domain.models import ImageItem
     from ocr_app.infrastructure.csv_result_writer import CsvResultWriter

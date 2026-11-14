@@ -34,11 +34,11 @@ if ($LASTEXITCODE -ne 0) { throw "Failed to render application icon." }
     --windowed `
     --onedir `
     --name "OCRTool" `
-    --icon ".\src\ocr_app\presentation\assets\app.ico" `
-    --add-data ".\src\ocr_app\presentation\assets;ocr_app\presentation\assets" `
+    --icon "$ProjectRoot\src\ocr_app\presentation\assets\app.ico" `
+    --add-data "$ProjectRoot\src\ocr_app\presentation\assets;ocr_app\presentation\assets" `
     --specpath $BuildDirectory `
     --contents-directory "_internal" `
-    --paths ".\src" `
+    --paths "$ProjectRoot\src" `
     --collect-all "easyocr" `
     --collect-all "torchvision" `
     ".\main.py"

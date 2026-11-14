@@ -27,6 +27,15 @@ class EasyOcrEngine:
         )
 
     def recognize(self, image: Any) -> OcrRecognition:
+        """검출 문자열의 공백과 신뢰도를 정리하여 하나의 결과로 합친다.
+
+        Args:
+            image: 전처리가 끝난 OpenCV 이미지 배열.
+
+        Returns:
+            비어 있지 않은 문자열을 공백으로 연결한 OcrRecognition.
+            신뢰도는 유한한 값을 0~1로 제한한 평균이며, 유효한 점수가 없으면 None.
+        """
         detected = self._reader.readtext(
             image,
             detail=1,

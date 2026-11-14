@@ -27,6 +27,31 @@ from ocr_app.application.process_images import BatchProcessingSummary
 
 
 class MainWindowSmokeTests(unittest.TestCase):
+    def test_badge_tag_edit_updates_table_and_keeps_existing_ocr_result(self):
+        from PySide6.QtGui import QPixmap
+
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "sample.png"
+            pixmap = QPixmap(200, 120)
+            pixmap.fill(Qt.GlobalColor.white)
+            pixmap.save(str(path))
+            window = MainWindow()
+            self.addCleanup(self.close_window, window)
+            window._model.add_paths([path])
+            window._table.setCurrentIndex(window._model.index(0, 0))
+            window._apply_roi((Roi(20, 30, 100, 40, "old_tag"),))
+            window._preview.set_rois(window._static_rois)
+            item = window._model.items[0]
+            item.results = [OcrResult("old_tag", "recognized", 0.99)]
+            window._preview._start_tag_edit(0)
+            window._preview._tag_editor.setText("new_tag")
+            window._preview._commit_tag_edit()
+            self.assertEqual("new_tag", window._roi_table.item(0, 1).text())
+            self.assertEqual("recognized", window._roi_table.item(0, 4).text())
+            self.assertEqual("new_tag", item.results[0].ui_id)
+            self.assertEqual(0.99, item.results[0].confidence)
+            self.assertTrue(window._has_unsaved_rois)
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.application = QApplication.instance() or QApplication([])

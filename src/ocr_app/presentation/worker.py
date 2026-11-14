@@ -40,12 +40,27 @@ class OcrWorker(QRunnable):
 
     @Slot()
     def run(self) -> None:
+        """입력 인자 없이 생성 시 보관한 이미지·설정으로 OCR 파이프라인을 실행한다.
+
+        Returns:
+            None. 영역별 진행은 progress, 저장 완료 요약은 finished 신호로 보낸다.
+            전체 실행 예외는 failed로 전달하며 개별 영역 오류는 유스케이스가 기록한다.
+        """
         try:
             # Keep only the current reader: many language models can exhaust RAM.
             active_languages = None
             active_engine = None
 
             def engine_for_item(item: ImageItem) -> EasyOcrEngine:
+                """개별 언어 또는 기본 언어에 맞는 엔진 하나만 메모리에 유지한다.
+
+                Args:
+                    item: 인식할 이미지. 개별 언어가 없으면 작업의 기본 언어를 쓴다.
+
+                Returns:
+                    현재 언어 조합의 EasyOcrEngine. 언어가 바뀌면 이전 엔진을 해제하고
+                    다시 로드하므로 여러 언어 모델이 동시에 누적되지 않는다.
+                """
                 nonlocal active_languages, active_engine
                 languages = (
                     reader_languages(item.language_code)

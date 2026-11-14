@@ -11,6 +11,16 @@ class LanguageDelegate(QStyledItemDelegate):
     """Edit one language cell, applying the choice to the selected files."""
 
     def createEditor(self, parent, option, index):
+        """언어 검색 편집기를 만들고 변경을 적용할 선택 행을 고정한다.
+
+        Args:
+            parent: 편집기의 부모 위젯.
+            option: Qt 셀 표시 옵션. 생성 단계에서는 사용하지 않는다.
+            index: 편집할 셀. 다중 선택 밖의 셀이면 해당 행만 대상으로 삼는다.
+
+        Returns:
+            기본값 사용 항목과 언어 목록을 담은 SearchableComboBox.
+        """
         editor = SearchableComboBox()
         editor.setParent(parent)
         editor.setStyleSheet(
@@ -37,6 +47,16 @@ class LanguageDelegate(QStyledItemDelegate):
         editor.lineEdit().selectAll()
 
     def setModelData(self, editor, model, index):
+        """유효한 언어 선택만 편집 시작 시의 선택 행 전체에 반영한다.
+
+        Args:
+            editor: 입력 문자열과 선택 원본을 보관한 언어 편집기.
+            model: 이미지 목록 모델.
+            index: Qt가 전달한 편집 셀. 적용 행은 editor.selected_rows를 사용한다.
+
+        Returns:
+            None. 무효 입력을 복원했거나 실제 선택이 바뀌지 않았으면 반영하지 않는다.
+        """
         entered_text = editor.currentText().strip()
         editor._restore_valid_selection()
         if entered_text.casefold() != editor.currentText().strip().casefold():

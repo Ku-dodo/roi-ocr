@@ -18,6 +18,12 @@ from ocr_app.infrastructure.opencv_processor import OpenCvImageProcessor
 
 
 def main() -> int:
+    """명령행 이미지 한 장으로 실제 전처리·OCR·CSV 저장 경로를 점검한다.
+
+    Returns:
+        이미지 처리 실패가 없으면 종료 코드 0, 실패가 있으면 1.
+        입력 경로는 명령행에서 받으며 모델 다운로드를 허용하고 결과 위치를 출력한다.
+    """
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="한 이미지로 실제 OCR 파이프라인을 점검합니다.")

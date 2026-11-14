@@ -17,6 +17,16 @@ class OpenCvImageProcessor:
         self._screenshot_preprocessing = screenshot_preprocessing
 
     def process(self, path: Path, roi: Roi | None, scale_factor: int) -> Any:
+        """원본에서 ROI를 자른 뒤 선택적 콘솔 전처리와 최근접 이웃 확대를 수행한다.
+
+        Args:
+            path: 원본 이미지 파일 경로.
+            roi: 원본 픽셀 좌표의 영역. None이면 전체 이미지를 사용한다.
+            scale_factor: 허용된 확대 배율(1, 2, 4).
+
+        Returns:
+            OCR 입력 배열. 일반 모드는 BGR, 콘솔 전처리 모드는 이진 흑백 이미지이다.
+        """
         import cv2
 
         validate_scale_factor(scale_factor)
@@ -35,6 +45,14 @@ class OpenCvImageProcessor:
 
     @staticmethod
     def _preprocess_screenshot(image: Any) -> Any:
+        """밝기에 따라 색 채널을 합치고 Otsu 이진화로 콘솔 글자 대비를 높인다.
+
+        Args:
+            image: BGR 또는 이미 흑백인 이미지 배열.
+
+        Returns:
+            1채널 이진 이미지. 검은 배경과 흰 배경의 채널 합성 방식을 달리한다.
+        """
         import cv2
 
         if len(image.shape) == 2:
@@ -57,6 +75,15 @@ class OpenCvImageProcessor:
 
     @staticmethod
     def _crop(image: Any, roi: Roi | None) -> Any:
+        """이미지 경계를 벗어난 ROI를 경계 안으로 제한하여 자른다.
+
+        Args:
+            image: 원본 이미지 배열.
+            roi: 자를 픽셀 영역. None이면 자르지 않는다.
+
+        Returns:
+            원본 또는 잘린 배열 뷰. 경계 안의 유효 면적이 없으면 ValueError.
+        """
         if roi is None:
             return image
 

@@ -49,6 +49,11 @@ class SearchableComboBox(QComboBox):
             self._last_valid_index = index
 
     def _restore_valid_selection(self) -> None:
+        """검색 입력이 확정 항목과 일치하지 않으면 마지막 유효 선택으로 복구한다.
+
+        Returns:
+            None. 별도 인자 없이 현재 입력을 검사하며 새로운 목록 항목은 만들지 않는다.
+        """
         entered_text = self.currentText().strip()
         matching_index = self.findText(
             entered_text,

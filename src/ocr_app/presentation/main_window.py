@@ -292,6 +292,7 @@ class MainWindow(QMainWindow):
         self._model_download_checkbox.toggled.connect(self._language_changed)
         self._language_combo.currentIndexChanged.connect(self._language_changed)
         self._preview.roi_changed.connect(self._apply_roi)
+        self._preview.tag_renamed.connect(self._rename_roi_results)
         self._roi_table.cellChanged.connect(self._roi_tag_changed)
         self._roi_table.cellDoubleClicked.connect(self._roi_color_changed)
         self._preset_save_button.clicked.connect(self._save_preset)
@@ -350,6 +351,15 @@ class MainWindow(QMainWindow):
         self._update_footer()
 
     def _current_image_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
+        """선택한 이미지의 영역·결과·배율을 표시하고 다른 이미지 설정을 보존한다.
+
+        Args:
+            current: 새 선택의 모델 인덱스. 유효하지 않으면 이미지 표시를 비운다.
+            _previous: 이전 선택의 인덱스. 현재 처리에서는 사용하지 않는다.
+
+        Returns:
+            None. 배율 표시를 바꿀 때 신호를 막아 선택된 다른 행에 전파되지 않게 한다.
+        """
         item = self._item_at(current.row()) if current.isValid() else None
         if item is None:
             self._preview.set_image(None)
@@ -441,6 +451,15 @@ class MainWindow(QMainWindow):
         menu.deleteLater()
 
     def _apply_file_preset(self, rows: list[int], name: str | None) -> None:
+        """선택한 이미지 행에 저장된 프리셋을 적용하거나 기본 ROI로 복귀한다.
+
+        Args:
+            rows: 파일 목록에서 적용할 행 번호 목록.
+            name: 저장된 프리셋 이름. None이면 파일별 초안·프리셋 지정을 해제한다.
+
+        Returns:
+            None. 이미지별 ROI와 저장 당시 스냅샷을 갱신하고 화면에 반영한다.
+        """
         try:
             rois = self._preset_store.load(name) if name is not None else ()
         except (OSError, ValueError) as error:
@@ -462,6 +481,15 @@ class MainWindow(QMainWindow):
             self._show_item_details(current)
 
     def _apply_roi(self, rois: tuple[Roi, ...]) -> None:
+        """편집한 ROI를 현재 이미지의 개별 설정 또는 공통 기본 ROI에 반영한다.
+
+        Args:
+            rois: 미리보기에서 추가·이동·크기 조절·삭제 또는 Tag를 편집한 ROI 튜플.
+
+        Returns:
+            None. 파일별 프리셋·초안이 있으면 해당 이미지만, 없으면 기본 ROI를
+            갱신한다. ROI 표와 출처 안내도 갱신한다.
+        """
         item = self._current_item()
         if item is not None and item.has_custom_rois:
             item.rois = tuple(rois)
@@ -474,6 +502,12 @@ class MainWindow(QMainWindow):
         self._roi_label.setText(f"ROI {len(rois)}개 · {source} · 내부 우클릭으로 삭제")
 
     def _find_roi_candidates(self) -> None:
+        """입력 인자 없이 현재 이미지와 다운로드 설정을 읽어 자동 검출을 시작한다.
+
+        Returns:
+            None. 이미지 선택과 모델 설치를 확인한 후 백그라운드 작업을 시작하고
+            편집 컨트롤을 잠근다. 입력이 부족하면 안내를 표시하고 종료한다.
+        """
         item = self._current_item()
         if item is None:
             QMessageBox.information(self, "이미지 선택", "자동으로 ROI를 찾을 이미지를 선택해 주세요.")
@@ -494,6 +528,15 @@ class MainWindow(QMainWindow):
         self._thread_pool.start(worker)
 
     def _roi_candidates_found(self, candidates: tuple[Roi, ...]) -> None:
+        """검출 완료 후 후보 검토 창을 열고 사용자가 선택한 영역을 추가한다.
+
+        Args:
+            candidates: 검출 작업의 finished 신호로 받은 ROI 후보 튜플.
+
+        Returns:
+            None. 작업 컨트롤을 복구하고, 승인한 후보만 검출 대상 이미지에
+            개별 초안으로 추가한다. 기존 ROI는 보존하며 취소 시 변경하지 않는다.
+        """
         item = self._roi_detection_item
         self._roi_detection_item = None
         self._roi_detection_worker = None
@@ -502,7 +545,7 @@ class MainWindow(QMainWindow):
         if item is None:
             return
         if not candidates:
-            self._status_label.setText("추가할 ROI 후보가 없습니다. 기존 ROI와 겹치는 영역은 제외했습니다.")
+            self._status_label.setText("추가할 ROI 후보가 없습니다. 다른 ROI에 완전히 포함된 후보는 제외했습니다.")
             return
         existing = self._effective_rois(item)
         dialog = RoiDraftDialog(item.path, existing, candidates, self)
@@ -521,6 +564,14 @@ class MainWindow(QMainWindow):
         dialog.deleteLater()
 
     def _roi_detection_failed(self, message: str) -> None:
+        """자동 검출 실패 시 대기 상태를 해제하고 오류를 안내한다.
+
+        Args:
+            message: 검출 작업의 failed 신호로 받은 오류 메시지.
+
+        Returns:
+            None. 작업 참조와 진행률을 초기화하고 편집 컨트롤을 복구한다.
+        """
         self._roi_detection_item = None
         self._roi_detection_worker = None
         self._set_controls_enabled(True)
@@ -529,9 +580,22 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "ROI 자동 찾기 실패", message)
 
     def _effective_rois(self, item: ImageItem | None) -> tuple[Roi, ...]:
+        """이미지에 실제 적용할 개별 ROI 또는 공통 기본 ROI를 선택한다.
+
+        Args:
+            item: 적용 대상을 확인할 이미지. None이면 기본 ROI를 선택한다.
+
+        Returns:
+            파일별 프리셋·초안이 있으면 item.rois, 그렇지 않으면 기본 ROI 튜플.
+        """
         return item.rois if item is not None and item.has_custom_rois else self._static_rois
 
     def _display_rois(self) -> tuple[Roi, ...]:
+        """입력 인자 없이 현재 선택된 이미지의 표시용 ROI를 조회한다.
+
+        Returns:
+            현재 이미지에 유효한 ROI 튜플. 선택된 이미지가 없으면 기본 ROI이다.
+        """
         return self._effective_rois(self._current_item())
 
     def _update_default_roi_label(self) -> None:
@@ -571,6 +635,12 @@ class MainWindow(QMainWindow):
         self._update_roi_results()
 
     def _update_roi_results(self) -> None:
+        """입력 인자 없이 현재 이미지의 결과를 ROI Tag 기준으로 표에 연결한다.
+
+        Returns:
+            None. 새 실행 전까지 이전 결과를 유지하고 결과가 없는 영역만
+            진행 중·실패·대기로 표시한다. 표 갱신이 편집 신호를 만들지 않도록 막는다.
+        """
         image = self._current_item()
         results = {result.ui_id: result for result in image.results} if image else {}
         self._roi_table.blockSignals(True)
@@ -603,6 +673,15 @@ class MainWindow(QMainWindow):
         self._roi_table.blockSignals(False)
 
     def _roi_tag_changed(self, row: int, column: int) -> None:
+        """Tag 편집을 검증하여 빈 값과 다른 ROI와의 중복을 방지한다.
+
+        Args:
+            row: 편집한 ROI 행 번호.
+            column: 편집한 열 번호. Tag 열이 아니면 처리하지 않는다.
+
+        Returns:
+            None. 유효한 값이면 현재 ROI와 미리보기를 갱신하고, 무효이면 표를 복원한다.
+        """
         displayed = self._display_rois()
         if column != 1 or not 0 <= row < len(displayed):
             return
@@ -612,9 +691,35 @@ class MainWindow(QMainWindow):
             self._refresh_roi_table()
             return
         rois = list(displayed)
+        self._rename_roi_results(rois[row].tag, tag)
         rois[row] = replace(rois[row], tag=tag)
         self._preview.set_rois(tuple(rois))
         self._apply_roi(tuple(rois))
+
+    def _rename_roi_results(self, old_tag: str, new_tag: str) -> None:
+        """Tag 변경 시 해당 편집 범위의 기존 인식 결과도 새 UI ID로 연결한다.
+
+        Args:
+            old_tag: 변경 전 Tag.
+            new_tag: 빈 값·중복 검증을 마친 새 Tag.
+
+        Returns:
+            None. 개별 ROI는 현재 이미지만, 기본 ROI는 기본값을 쓰는 이미지의
+            결과를 갱신한다. 인식 문자열·신뢰도·처리 상태는 유지한다.
+        """
+        current = self._current_item()
+        items = [current] if current is not None and current.has_custom_rois else [
+            item for item in self._model.items if not item.has_custom_rois
+        ]
+        for item in items:
+            item.results = [replace(result, ui_id=new_tag) if result.ui_id == old_tag else result
+                            for result in item.results]
+            if item.active_roi_id == old_tag:
+                item.active_roi_id = new_tag
+            item.extracted_text = "\n".join(
+                f"[{result.ui_id}] {result.extracted_text}" for result in item.results if not result.processing_failed
+            )
+            self._model.notify_item_updated(item)
 
     def _roi_color_changed(self, row: int, column: int) -> None:
         displayed = self._display_rois()
@@ -628,6 +733,11 @@ class MainWindow(QMainWindow):
             self._apply_roi(tuple(rois))
 
     def _assign_rois_to_items(self) -> None:
+        """입력 인자 없이 등록된 이미지마다 OCR 실행에 사용할 ROI를 배정한다.
+
+        Returns:
+            None. 개별 프리셋·초안을 유지하고 나머지 이미지는 현재 기본 ROI를 쓴다.
+        """
         for item in self._model.items:
             item.rois = self._effective_rois(item)
 
@@ -644,10 +754,25 @@ class MainWindow(QMainWindow):
         self._preset_combo.setCurrentIndex(max(0, self._preset_combo.findData(selected)))
 
     def _save_preset(self) -> bool:
+        """입력 인자 없이 현재 편집 대상의 ROI를 이름 있는 프리셋으로 저장한다.
+
+        Returns:
+            저장에 성공하면 True, 이름 입력을 취소했거나 저장하지 못하면 False.
+            파일별 프리셋·초안이 있으면 해당 이미지를, 없으면 기본 ROI를 저장한다.
+        """
         item = self._current_item()
         return self._save_roi_preset(item if item is not None and item.has_custom_rois else None)
 
     def _save_roi_preset(self, item: ImageItem | None) -> bool:
+        """ROI의 저장 이름을 입력받아 프리셋 파일과 저장 스냅샷을 갱신한다.
+
+        Args:
+            item: 저장할 파일별 ROI를 가진 이미지. None이면 기본 ROI를 저장한다.
+
+        Returns:
+            저장에 성공하면 True. ROI가 없거나 이름 입력 취소·저장 실패 시 False.
+            성공 시 개별 초안을 저장된 프리셋으로 전환하고 변경 표시를 갱신한다.
+        """
         rois = self._effective_rois(item)
         if not rois:
             QMessageBox.warning(self, "ROI 필요", "저장할 ROI를 먼저 지정해 주세요.")
@@ -677,6 +802,12 @@ class MainWindow(QMainWindow):
         return True
 
     def _load_preset(self) -> None:
+        """입력 인자 없이 드롭다운의 프리셋을 공통 기본 ROI로 적용한다.
+
+        Returns:
+            None. 파일별 프리셋·자동 초안은 유지하고, 현재 이미지에 유효한 영역을
+            다시 표시한다. 기본 ROI의 저장 스냅샷도 불러온 값으로 갱신한다.
+        """
         name = self._preset_combo.currentData()
         if name is None:
             return
@@ -717,12 +848,23 @@ class MainWindow(QMainWindow):
 
     @property
     def _has_unsaved_rois(self) -> bool:
+        """입력 인자 없이 기본 ROI와 파일별 ROI의 저장되지 않은 편집을 확인한다.
+
+        Returns:
+            현재 영역이 저장 스냅샷과 다른 대상이 하나라도 있으면 True.
+        """
         return self._static_rois != self._saved_rois or any(
             item.has_custom_rois and item.rois != item.roi_preset_snapshot
             for item in self._model.items
         )
 
     def _save_unsaved_rois(self) -> bool:
+        """입력 인자 없이 변경된 기본 ROI와 파일별 ROI를 순서대로 저장한다.
+
+        Returns:
+            필요한 저장을 모두 완료하면 True. 어느 하나라도 취소·실패하면
+            이후 저장을 중단하고 False. 이미 완료한 저장은 유지한다.
+        """
         if self._static_rois != self._saved_rois and not self._save_roi_preset(None):
             return False
         for item in self._model.items:
@@ -732,13 +874,22 @@ class MainWindow(QMainWindow):
         return True
 
     def closeEvent(self, event) -> None:
+        """편집 중인 셀을 확정한 뒤 미저장 ROI의 저장 여부를 확인한다.
+
+        Args:
+            event: Qt 종료 이벤트. 검출 진행 중이거나 저장을 취소하면 거절한다.
+
+        Returns:
+            None. 종료 가능 여부를 event.accept/ignore로 전달한다.
+            저장 선택 시 모든 변경 대상을 저장해야 종료한다.
+        """
         if self._roi_detection_worker is not None:
             self._status_label.setText("ROI 자동 찾기가 끝난 뒤 종료해 주세요.")
             event.ignore()
             return
         # Commit a Tag that is still being edited before checking for changes.
         focused = self.focusWidget()
-        if focused is not None and self._roi_table.isAncestorOf(focused):
+        if focused is not None and (self._roi_table.isAncestorOf(focused) or self._preview.isAncestorOf(focused)):
             focused.clearFocus()
         if not self._has_unsaved_rois:
             event.accept()
@@ -758,6 +909,12 @@ class MainWindow(QMainWindow):
             event.ignore()
 
     def _run_ocr(self) -> None:
+        """입력 인자 없이 파일·ROI·언어·모델을 확인한 후 OCR 작업을 시작한다.
+
+        Returns:
+            None. 사전 검증 통과 후에만 이전 결과를 지우고 편집 컨트롤을 잠근다.
+            다운로드 허용 여부를 작업에 전달하며 준비 상태는 진행률 대기로 표시한다.
+        """
         if not self._model.items:
             QMessageBox.warning(self, "처리할 파일 없음", "먼저 이미지를 추가해 주세요.")
             return
@@ -833,6 +990,16 @@ class MainWindow(QMainWindow):
         self._thread_pool.start(worker)
 
     def _ocr_progress(self, completed: int, total: int, item: ImageItem) -> None:
+        """영역 단위 진행 신호를 파일 목록과 현재 ROI 결과 표에 반영한다.
+
+        Args:
+            completed: 처리가 끝난 영역 수. 실패 영역도 포함한다.
+            total: 전체 처리 영역 수.
+            item: 상태와 결과가 갱신된 이미지 객체.
+
+        Returns:
+            None. CSV 저장 완료 신호 전에는 진행률을 최대 99%로 제한한다.
+        """
         self._model.notify_item_updated(item)
         # Reserve the final percent until the CSV has been written successfully.
         if completed > 0 or self._progress_bar.maximum() != 0:
@@ -864,6 +1031,14 @@ class MainWindow(QMainWindow):
         )
 
     def _ocr_failed(self, message: str) -> None:
+        """전체 작업 실패 시 UI를 복구하고 아직 처리 중인 이미지를 실패로 정리한다.
+
+        Args:
+            message: 작업 스레드가 전달한 예외 메시지.
+
+        Returns:
+            None. 완료된 이미지의 결과는 유지하고, 진행 중 표시와 작업 참조를 해제한다.
+        """
         self._set_controls_enabled(True)
         self._worker = None
         self._progress_bar.reset_progress()
@@ -878,11 +1053,27 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "OCR 실행 오류", message)
 
     def _show_item_details(self, item: ImageItem) -> None:
+        """이미지의 ROI 출처·개수·배율과 기존 인식 결과를 화면에 표시한다.
+
+        Args:
+            item: 상세 정보를 표시할 이미지.
+
+        Returns:
+            None. ROI 안내 문구와 결과 표를 갱신한다.
+        """
         source = item.roi_preset_name or ("자동 찾기 초안" if item.roi_override else "기본 ROI")
         self._roi_label.setText(f"ROI {len(self._effective_rois(item))}개 · {source} · 확대 {item.scale_factor}x · 내부 우클릭으로 삭제")
         self._update_roi_results()
 
     def _set_controls_enabled(self, enabled: bool) -> None:
+        """OCR 또는 자동 검출 중 편집 컨트롤의 사용 가능 상태를 일괄 변경한다.
+
+        Args:
+            enabled: True면 편집을 허용하고 False면 잠근다.
+
+        Returns:
+            None. 잠글 때 설정 팝업도 닫고 파일 선택 상태에 맞춰 버튼을 갱신한다.
+        """
         if not enabled:
             self._settings_popup.hide_panel()
         for widget in (
