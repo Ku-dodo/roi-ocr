@@ -51,10 +51,12 @@ class ImagePreview(QGraphicsView):
         self.setMouseTracking(True)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         self.setToolTip(
-            "빈 영역을 왼쪽 드래그하여 ROI를 추가합니다. ROI 내부 드래그는 이동, 오른쪽 하단 사각 핸들 드래그는 크기 조절입니다. "
-            "휠로 확대·축소하고 더블클릭하면 전체 이미지에 맞춥니다. "
-            "휠 버튼을 누른 채 드래그하면 이미지를 이동합니다. "
-            "ROI 내부를 오른쪽 클릭하면 해당 ROI가 해제됩니다."
+            "ROI 추가: 빈 곳에서 왼쪽 드래그\n"
+            "ROI 이동: 영역 안에서 드래그\n"
+            "크기 조절: 오른쪽 아래 핸들 드래그\n"
+            "ROI 삭제: 영역 안에서 오른쪽 클릭\n"
+            "확대·축소: 휠 / 전체 보기: 더블클릭\n"
+            "화면 이동: 휠 버튼을 누른 채 드래그"
         )
 
     def set_image(self, path: Path | None, rois: tuple[Roi, ...] = ()) -> bool:
