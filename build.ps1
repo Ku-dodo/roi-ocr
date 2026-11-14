@@ -25,12 +25,17 @@ if (Test-Path -LiteralPath $GeneratedLicenses) {
 & $PythonExecutable ".\tools\collect_licenses.py"
 if ($LASTEXITCODE -ne 0) { throw "Failed to collect license materials." }
 
+& $PythonExecutable ".\tools\build_app_icon.py"
+if ($LASTEXITCODE -ne 0) { throw "Failed to render application icon." }
+
 & $PythonExecutable -m PyInstaller `
     --noconfirm `
     --clean `
     --windowed `
     --onedir `
     --name "OCRTool" `
+    --icon ".\src\ocr_app\presentation\assets\app.ico" `
+    --add-data ".\src\ocr_app\presentation\assets;ocr_app\presentation\assets" `
     --specpath $BuildDirectory `
     --contents-directory "_internal" `
     --paths ".\src" `

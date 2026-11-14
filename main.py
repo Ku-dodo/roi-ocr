@@ -40,10 +40,17 @@ def main() -> int:
     from PySide6.QtWidgets import QApplication
 
     from ocr_app.presentation.main_window import MainWindow
+    from ocr_app.presentation.icons import svg_icon
+
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Internal.ROI.OCRTool")
 
     app = QApplication(sys.argv)
     app.setApplicationName("이미지 OCR 도구")
     app.setOrganizationName("Internal")
+    app.setWindowIcon(svg_icon("app.svg"))
 
     window = MainWindow()
     window.show()

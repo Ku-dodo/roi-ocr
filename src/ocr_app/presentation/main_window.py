@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Iterable
 
-from PySide6.QtCore import QModelIndex, QSettings, QThreadPool, Qt
+from PySide6.QtCore import QModelIndex, QSettings, QThreadPool, Qt, QSize
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QGroupBox,
@@ -47,6 +48,9 @@ from ocr_app.presentation.searchable_combo_box import SearchableComboBox
 from ocr_app.presentation.settings_popover import SettingsPopover
 from ocr_app.presentation.smooth_progress_bar import SmoothProgressBar
 from ocr_app.presentation.worker import OcrWorker
+from ocr_app.presentation.roi_detection_worker import RoiDetectionWorker
+from ocr_app.presentation.roi_draft_dialog import RoiDraftDialog
+from ocr_app.presentation.icons import svg_icon
 
 
 class MainWindow(QMainWindow):
@@ -56,6 +60,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._thread_pool = QThreadPool.globalInstance()
         self._worker: OcrWorker | None = None
+        self._roi_detection_worker: RoiDetectionWorker | None = None
+        self._roi_detection_item: ImageItem | None = None
         self._active_screenshot_preprocessing = False
         self._static_rois: tuple[Roi, ...] = ()
         self._saved_rois: tuple[Roi, ...] = ()
@@ -65,6 +71,7 @@ class MainWindow(QMainWindow):
         self._preset_store = RoiPresetStore(application_directory() / "presets" / "roi_presets.json")
 
         self.setWindowTitle("이미지 OCR 도구")
+        self.setWindowIcon(svg_icon("app.svg"))
         self.resize(1400, 780)
         self.setMinimumSize(900, 580)
         self._build_ui()
@@ -221,6 +228,13 @@ class MainWindow(QMainWindow):
         self._preset_combo.setMinimumContentsLength(12)
         self._preset_combo.setToolTip("프리셋을 선택하면 기본 ROI에 바로 적용됩니다. 이미지 추가 전에도 선택할 수 있습니다.")
         preset_toolbar.addWidget(self._preset_combo, 1)
+        self._auto_roi_button = QPushButton()
+        self._auto_roi_button.setIcon(svg_icon("auto-roi.svg"))
+        self._auto_roi_button.setIconSize(QSize(24, 24))
+        self._auto_roi_button.setFixedSize(36, 34)
+        self._auto_roi_button.setAccessibleName("ROI 자동 찾기")
+        self._auto_roi_button.setToolTip("ROI 자동 찾기\n글자 영역 후보를 검토한 뒤 현재 이미지에 추가합니다.")
+        preset_toolbar.addWidget(self._auto_roi_button)
         self._preset_save_button = QPushButton("저장")
         self._preset_load_button = QPushButton("불러오기")
         self._preset_delete_button = QPushButton("삭제")
@@ -284,6 +298,7 @@ class MainWindow(QMainWindow):
         self._preset_load_button.clicked.connect(self._load_preset)
         self._preset_combo.activated.connect(self._load_preset)
         self._preset_delete_button.clicked.connect(self._delete_preset)
+        self._auto_roi_button.clicked.connect(self._find_roi_candidates)
         self._table.images_dropped.connect(self._add_image_paths)
         self._table.clicked.connect(self._edit_language_cell)
         self._table.customContextMenuRequested.connect(self._show_file_context_menu)
@@ -389,7 +404,10 @@ class MainWindow(QMainWindow):
             action = menu.addAction(name if name is not None else "기본 ROI 사용")
             action.setData(name)
             action.setCheckable(True)
-            action.setChecked(bool(items) and all(item.roi_preset_name == name for item in items))
+            action.setChecked(bool(items) and all(
+                item.roi_preset_name == name and (name is not None or not item.has_custom_rois)
+                for item in items
+            ))
             action.triggered.connect(lambda checked=False, value=name: self._apply_file_preset(rows, value))
         if not names:
             empty = menu.addAction("저장된 프리셋 없음")
@@ -432,6 +450,7 @@ class MainWindow(QMainWindow):
             item = self._item_at(row)
             if item is not None:
                 item.roi_preset_name = name
+                item.roi_override = False
                 item.rois = rois
                 item.roi_preset_snapshot = rois
                 self._model.notify_item_updated(item)
@@ -444,18 +463,73 @@ class MainWindow(QMainWindow):
 
     def _apply_roi(self, rois: tuple[Roi, ...]) -> None:
         item = self._current_item()
-        if item is not None and item.roi_preset_name is not None:
+        if item is not None and item.has_custom_rois:
             item.rois = tuple(rois)
             self._model.notify_item_updated(item)
         else:
             self._static_rois = tuple(rois)
             self._update_default_roi_label()
         self._refresh_roi_table()
-        source = item.roi_preset_name if item is not None and item.roi_preset_name is not None else "기본 ROI"
+        source = (item.roi_preset_name or "자동 찾기 초안") if item is not None and item.has_custom_rois else "기본 ROI"
         self._roi_label.setText(f"ROI {len(rois)}개 · {source} · 내부 우클릭으로 삭제")
 
+    def _find_roi_candidates(self) -> None:
+        item = self._current_item()
+        if item is None:
+            QMessageBox.information(self, "이미지 선택", "자동으로 ROI를 찾을 이미지를 선택해 주세요.")
+            return
+        models = model_directory()
+        allow_download = self._model_download_checkbox.isChecked()
+        if not (models / "craft_mlt_25k.pth").is_file() and not allow_download:
+            QMessageBox.warning(self, "검출 모델 없음", "설정에서 '모델 자동 다운로드'를 체크한 뒤 다시 실행해 주세요.")
+            return
+        self._roi_detection_item = item
+        worker = RoiDetectionWorker(item.path, models, self._effective_rois(item), allow_download)
+        worker.signals.finished.connect(self._roi_candidates_found)
+        worker.signals.failed.connect(self._roi_detection_failed)
+        self._roi_detection_worker = worker
+        self._set_controls_enabled(False)
+        self._progress_bar.reset_progress(busy=True)
+        self._status_label.setText("ROI 후보를 찾는 중입니다...")
+        self._thread_pool.start(worker)
+
+    def _roi_candidates_found(self, candidates: tuple[Roi, ...]) -> None:
+        item = self._roi_detection_item
+        self._roi_detection_item = None
+        self._roi_detection_worker = None
+        self._set_controls_enabled(True)
+        self._progress_bar.reset_progress()
+        if item is None:
+            return
+        if not candidates:
+            self._status_label.setText("추가할 ROI 후보가 없습니다. 기존 ROI와 겹치는 영역은 제외했습니다.")
+            return
+        existing = self._effective_rois(item)
+        dialog = RoiDraftDialog(item.path, existing, candidates, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            selected = dialog.selected_rois()
+            if selected:
+                item.roi_override = True
+                item.rois = existing + selected
+                self._model.notify_item_updated(item)
+                self._preview.set_rois(item.rois)
+                self._refresh_roi_table()
+                self._show_item_details(item)
+                self._status_label.setText(f"현재 이미지에 ROI 후보 {len(selected)}개를 추가했습니다. 수정 후 프리셋으로 저장하세요.")
+        else:
+            self._status_label.setText("ROI 자동 찾기를 취소했습니다.")
+        dialog.deleteLater()
+
+    def _roi_detection_failed(self, message: str) -> None:
+        self._roi_detection_item = None
+        self._roi_detection_worker = None
+        self._set_controls_enabled(True)
+        self._progress_bar.reset_progress()
+        self._status_label.setText("ROI 자동 찾기 실패")
+        QMessageBox.warning(self, "ROI 자동 찾기 실패", message)
+
     def _effective_rois(self, item: ImageItem | None) -> tuple[Roi, ...]:
-        return item.rois if item is not None and item.roi_preset_name is not None else self._static_rois
+        return item.rois if item is not None and item.has_custom_rois else self._static_rois
 
     def _display_rois(self) -> tuple[Roi, ...]:
         return self._effective_rois(self._current_item())
@@ -571,7 +645,7 @@ class MainWindow(QMainWindow):
 
     def _save_preset(self) -> bool:
         item = self._current_item()
-        return self._save_roi_preset(item if item is not None and item.roi_preset_name is not None else None)
+        return self._save_roi_preset(item if item is not None and item.has_custom_rois else None)
 
     def _save_roi_preset(self, item: ImageItem | None) -> bool:
         rois = self._effective_rois(item)
@@ -594,6 +668,7 @@ class MainWindow(QMainWindow):
             self._saved_preset_name = name.strip()
         else:
             item.roi_preset_name = name.strip()
+            item.roi_override = False
             item.roi_preset_snapshot = rois
             self._model.notify_item_updated(item)
         self._update_default_roi_label()
@@ -643,7 +718,7 @@ class MainWindow(QMainWindow):
     @property
     def _has_unsaved_rois(self) -> bool:
         return self._static_rois != self._saved_rois or any(
-            item.roi_preset_name is not None and item.rois != item.roi_preset_snapshot
+            item.has_custom_rois and item.rois != item.roi_preset_snapshot
             for item in self._model.items
         )
 
@@ -651,12 +726,16 @@ class MainWindow(QMainWindow):
         if self._static_rois != self._saved_rois and not self._save_roi_preset(None):
             return False
         for item in self._model.items:
-            if item.roi_preset_name is not None and item.rois != item.roi_preset_snapshot:
+            if item.has_custom_rois and item.rois != item.roi_preset_snapshot:
                 if not self._save_roi_preset(item):
                     return False
         return True
 
     def closeEvent(self, event) -> None:
+        if self._roi_detection_worker is not None:
+            self._status_label.setText("ROI 자동 찾기가 끝난 뒤 종료해 주세요.")
+            event.ignore()
+            return
         # Commit a Tag that is still being edited before checking for changes.
         focused = self.focusWidget()
         if focused is not None and self._roi_table.isAncestorOf(focused):
@@ -799,7 +878,7 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "OCR 실행 오류", message)
 
     def _show_item_details(self, item: ImageItem) -> None:
-        source = item.roi_preset_name or "기본 ROI"
+        source = item.roi_preset_name or ("자동 찾기 초안" if item.roi_override else "기본 ROI")
         self._roi_label.setText(f"ROI {len(self._effective_rois(item))}개 · {source} · 확대 {item.scale_factor}x · 내부 우클릭으로 삭제")
         self._update_roi_results()
 
@@ -819,6 +898,7 @@ class MainWindow(QMainWindow):
             self._preview,
             self._roi_table,
             self._preset_combo,
+            self._auto_roi_button,
             self._preset_save_button,
             self._preset_load_button,
             self._preset_delete_button,

@@ -42,8 +42,8 @@ class ImageTableModel(QAbstractTableModel):
                     if item.language_code is not None
                     else f"기본값 · {get_language(self.default_language_code).name}"
                 ),
-                (item.roi_preset_name + (" *" if item.rois != item.roi_preset_snapshot else "")
-                 if item.roi_preset_name is not None else self.default_roi_label),
+                ((item.roi_preset_name or "자동 찾기 초안") + (" *" if item.rois != item.roi_preset_snapshot else "")
+                 if item.has_custom_rois else self.default_roi_label),
                 item.status.value,
             )
             return values[index.column()]

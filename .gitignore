@@ -12,6 +12,7 @@ result/
 presets/
 models/*.pth
 models/*.zip
+models/paddle/
 licenses/generated/
 python-*-amd64.exe
 python-install.log

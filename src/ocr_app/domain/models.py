@@ -51,6 +51,11 @@ class ImageItem:
     active_roi_id: str | None = None
     roi_preset_name: str | None = None
     roi_preset_snapshot: tuple[Roi, ...] = ()
+    roi_override: bool = False
+
+    @property
+    def has_custom_rois(self) -> bool:
+        return self.roi_override or self.roi_preset_name is not None
 
     def __post_init__(self) -> None:
         self.path = self.path.resolve()
